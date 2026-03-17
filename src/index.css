@@ -1,0 +1,167 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+/* shadcn/ui semantic colors -- bridge CSS variables to Tailwind v4 theme */
+@theme inline {
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-positive: var(--positive);
+  --color-positive-foreground: var(--positive-foreground);
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+    --tw-ring-color: var(--color-ring, currentcolor);
+  }
+}
+
+:root {
+  /* Light mode */
+  --background: hsl(0 0% 100%);
+  --foreground: hsl(222.2 84% 4.9%);
+
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(222.2 84% 4.9%);
+
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(222.2 84% 4.9%);
+
+  --primary: hsl(152 60% 42%);
+  --primary-foreground: hsl(210 40% 98%);
+  --primary-hover: hsl(152 60% 35%);
+
+  --secondary: hsl(210 40% 96%);
+  --secondary-foreground: hsl(222.2 47.4% 11.2%);
+
+  --muted: hsl(210 40% 96%);
+  --muted-foreground: hsl(215.4 16.3% 46.9%);
+
+  --accent: hsl(210 40% 96%);
+  --accent-foreground: hsl(222.2 47.4% 11.2%);
+
+  --destructive: hsl(0 84.2% 60.2%);
+  --destructive-foreground: hsl(210 40% 98%);
+
+  --warning: hsl(38 92% 50%);
+  --warning-foreground: hsl(38 92% 20%);
+
+  --positive: hsl(152 60% 42%);
+  --positive-foreground: hsl(152 60% 10%);
+
+  --border: hsl(214.3 31.8% 91.4%);
+  --input: hsl(214.3 31.8% 91.4%);
+  --ring: hsl(152 60% 42%);
+
+  --radius: 0.75rem;
+}
+
+.dark {
+  /* Dark mode -- adapted from bio's palette */
+  --background: hsl(0 0% 10%);
+  --foreground: hsl(220 10% 93%);
+
+  --card: hsl(217 33% 17%);
+  --card-foreground: hsl(220 10% 93%);
+
+  --popover: hsl(217 33% 17%);
+  --popover-foreground: hsl(220 10% 93%);
+
+  --primary: hsl(152 60% 50%);
+  --primary-foreground: hsl(222 47% 11%);
+  --primary-hover: hsl(152 60% 60%);
+
+  --secondary: hsl(217 19% 27%);
+  --secondary-foreground: hsl(214 14% 84%);
+
+  --muted: hsl(217 33% 17%);
+  --muted-foreground: hsl(218 11% 65%);
+
+  --accent: hsl(217 19% 27%);
+  --accent-foreground: hsl(220 10% 93%);
+
+  --destructive: hsl(0 72% 51%);
+  --destructive-foreground: hsl(210 40% 98%);
+
+  --warning: hsl(38 92% 55%);
+  --warning-foreground: hsl(38 92% 95%);
+
+  --positive: hsl(152 60% 50%);
+  --positive-foreground: hsl(152 60% 95%);
+
+  --border: hsl(217 19% 24%);
+  --input: hsl(217 19% 24%);
+  --ring: hsl(152 60% 50%);
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  background-color: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Sonner toast overrides -- match app theme */
+[data-sonner-toaster] [data-sonner-toast] {
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--card-foreground);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+}
+
+/* Skip-to-content link */
+.skip-to-content {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 0.5rem 1rem;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-radius: 0 0 var(--radius) 0;
+}
+
+.skip-to-content:focus {
+  left: 0;
+}
