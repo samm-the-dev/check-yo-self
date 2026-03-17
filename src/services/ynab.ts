@@ -1,11 +1,20 @@
 import * as ynab from 'ynab';
 import { db } from '@/db';
 import { SYNC_DEBOUNCE_MS } from '@/types/ynab-cache';
-import type { DailyBudgetSnapshot, CategoryBalance, TransactionSummary } from '@/types/budget';
+import type {
+  DailyBudgetSnapshot,
+  CategoryBalance,
+  CategoryTierMap,
+  FlexibleCategoryDaily,
+  NecessityGateStatus,
+  OverspendWarning,
+  TransactionSummary,
+} from '@/types/budget';
 import { todayISO } from '@/lib/utils';
 
 const TOKEN_KEY = 'cys-ynab-token';
 const PLAN_KEY = 'cys-ynab-plan-id';
+const TIERS_KEY = 'cys-category-tiers';
 
 /** Get or set the YNAB Personal Access Token */
 export function getYnabToken(): string | null {
@@ -27,6 +36,16 @@ export function getPlanId(): string | null {
 
 export function setPlanId(id: string): void {
   localStorage.setItem(PLAN_KEY, id);
+}
+
+/** Get or set category tier mappings */
+export function getCategoryTiers(): CategoryTierMap {
+  const raw = localStorage.getItem(TIERS_KEY);
+  return raw ? (JSON.parse(raw) as CategoryTierMap) : {};
+}
+
+export function setCategoryTiers(tiers: CategoryTierMap): void {
+  localStorage.setItem(TIERS_KEY, JSON.stringify(tiers));
 }
 
 /** Create an authenticated YNAB API client */
@@ -124,8 +143,13 @@ function milliToDollars(milliunits: number): number {
   return ynab.utils.convertMilliUnitsToCurrencyAmount(milliunits, 2);
 }
 
+/** Overspend threshold — warn if one category uses this fraction of total daily budget */
+const OVERSPEND_THRESHOLD = 0.8;
+
 /** Build the daily budget snapshot from cached YNAB data */
-export async function getDailyBudgetSnapshot(): Promise<DailyBudgetSnapshot | null> {
+export async function getDailyBudgetSnapshot(
+  tiers?: CategoryTierMap,
+): Promise<DailyBudgetSnapshot | null> {
   const categoryGroups = await readCache<ynab.CategoryGroupWithCategories[]>('categories');
   const transactions = await readCache<ynab.TransactionDetail[]>('transactions');
 
@@ -135,6 +159,8 @@ export async function getDailyBudgetSnapshot(): Promise<DailyBudgetSnapshot | nu
   const now = new Date();
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const daysRemaining = Math.max(1, daysInMonth - now.getDate() + 1);
+
+  const hasTiers = tiers && Object.keys(tiers).length > 0;
 
   // Flatten categories, skip internal/hidden groups
   const categories: CategoryBalance[] = [];
@@ -151,6 +177,7 @@ export async function getDailyBudgetSnapshot(): Promise<DailyBudgetSnapshot | nu
       const activity = Math.abs(milliToDollars(cat.activity));
 
       categories.push({
+        id: cat.id,
         name: cat.name,
         groupName: group.name,
         balance,
@@ -158,12 +185,19 @@ export async function getDailyBudgetSnapshot(): Promise<DailyBudgetSnapshot | nu
         activity,
       });
 
-      // Only count positive balances toward available spending
-      if (balance > 0) totalAvailable += balance;
+      if (hasTiers) {
+        // Only flexible categories with positive balances feed the daily budget
+        if (tiers[cat.id] === 'flexible' && balance > 0) {
+          totalAvailable += balance;
+        }
+      } else {
+        // Legacy behavior: all positive balances
+        if (balance > 0) totalAvailable += balance;
+      }
     }
   }
 
-  // Today's spending
+  // Today's spending (all negative transactions)
   const todayTxns = transactions.filter((t) => t.date === today && t.amount < 0);
   const spentToday = Math.abs(todayTxns.reduce((sum, t) => sum + t.amount, 0));
   const spentTodayDollars = milliToDollars(spentToday);
@@ -171,7 +205,7 @@ export async function getDailyBudgetSnapshot(): Promise<DailyBudgetSnapshot | nu
   const dailyAmount = totalAvailable / daysRemaining;
   const remainingToday = dailyAmount - spentTodayDollars;
 
-  return {
+  const snapshot: DailyBudgetSnapshot = {
     totalAvailable,
     daysRemaining,
     dailyAmount,
@@ -179,6 +213,91 @@ export async function getDailyBudgetSnapshot(): Promise<DailyBudgetSnapshot | nu
     remainingToday,
     categoryBreakdown: categories,
   };
+
+  // Tier-aware computations
+  if (hasTiers) {
+    snapshot.gate = buildNecessityGate(categories, tiers);
+    snapshot.flexibleBreakdown = buildFlexibleBreakdown(
+      categories,
+      tiers,
+      daysRemaining,
+      dailyAmount,
+      todayTxns,
+    );
+    snapshot.overspendWarnings = buildOverspendWarnings(snapshot.flexibleBreakdown, dailyAmount);
+  }
+
+  return snapshot;
+}
+
+/** Check if necessity categories are budgeted for the current month */
+function buildNecessityGate(
+  categories: CategoryBalance[],
+  tiers: CategoryTierMap,
+): NecessityGateStatus {
+  const unbudgetedNecessities = categories.filter(
+    (cat) => tiers[cat.id] === 'necessity' && cat.budgeted === 0,
+  );
+
+  const planId = getPlanId() ?? '';
+  const now = new Date();
+  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  return {
+    blocked: unbudgetedNecessities.length > 0,
+    unbudgetedNecessities,
+    ynabBudgetLink: `https://app.ynab.com/${planId}/budget/${month}`,
+  };
+}
+
+/** Build per-category daily breakdown for flexible categories */
+function buildFlexibleBreakdown(
+  categories: CategoryBalance[],
+  tiers: CategoryTierMap,
+  daysRemaining: number,
+  totalDailyAmount: number,
+  todayTxns: ynab.TransactionDetail[],
+): FlexibleCategoryDaily[] {
+  const flexibleCats = categories.filter((cat) => tiers[cat.id] === 'flexible' && cat.balance > 0);
+
+  // Group today's spending by category name
+  const spentByCategory = new Map<string, number>();
+  for (const txn of todayTxns) {
+    const catName = txn.category_name ?? 'Uncategorized';
+    const current = spentByCategory.get(catName) ?? 0;
+    spentByCategory.set(catName, current + Math.abs(milliToDollars(txn.amount)));
+  }
+
+  return flexibleCats.map((cat) => {
+    const catDailyAmount = cat.balance / daysRemaining;
+    const catSpentToday = spentByCategory.get(cat.name) ?? 0;
+    return {
+      name: cat.name,
+      groupName: cat.groupName,
+      balance: cat.balance,
+      dailyAmount: catDailyAmount,
+      spentToday: catSpentToday,
+      remainingToday: catDailyAmount - catSpentToday,
+      percentOfTotal: totalDailyAmount > 0 ? catDailyAmount / totalDailyAmount : 0,
+    };
+  });
+}
+
+/** Warn if one category consumes most of today's daily budget */
+function buildOverspendWarnings(
+  breakdown: FlexibleCategoryDaily[],
+  totalDailyAmount: number,
+): OverspendWarning[] {
+  if (totalDailyAmount <= 0) return [];
+
+  return breakdown
+    .filter((cat) => cat.spentToday / totalDailyAmount >= OVERSPEND_THRESHOLD)
+    .map((cat) => ({
+      categoryName: cat.name,
+      spentAmount: cat.spentToday,
+      dailyBudget: totalDailyAmount,
+      percentUsed: cat.spentToday / totalDailyAmount,
+    }));
 }
 
 /** Get today's transactions as summaries for coaching */

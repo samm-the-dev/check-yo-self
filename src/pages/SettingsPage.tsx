@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
+import { db } from '@/db';
 import {
   getYnabToken,
   setYnabToken,
@@ -6,8 +8,20 @@ import {
   getPlanId,
   setPlanId,
   fetchPlans,
+  getCategoryTiers,
+  setCategoryTiers,
 } from '@/services/ynab';
+import type { CategoryTier, CategoryTierMap } from '@/types/budget';
+import type { CategoryGroupWithCategories } from 'ynab';
 import { ExternalLink, Check, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { cn } from '@/lib/utils';
+
+const TIER_OPTIONS: { value: CategoryTier | 'excluded'; label: string }[] = [
+  { value: 'necessity', label: 'Necessity' },
+  { value: 'flexible', label: 'Flexible' },
+  { value: 'excluded', label: '\u2014' },
+];
 
 export function SettingsPage() {
   const [token, setToken] = useState(getYnabToken() ?? '');
@@ -16,8 +30,16 @@ export function SettingsPage() {
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tiers, setTiers] = useState<CategoryTierMap>(getCategoryTiers);
 
   const isConnected = !!getYnabToken() && !!getPlanId();
+
+  // Load cached YNAB categories for tier assignment
+  const cachedCategories = useLiveQuery(async () => {
+    const cached = await db.cache.get('categories');
+    if (!cached) return null;
+    return JSON.parse(cached.data) as CategoryGroupWithCategories[];
+  });
 
   const handleSaveToken = async () => {
     if (!token.trim()) return;
@@ -60,6 +82,31 @@ export function SettingsPage() {
     setSelectedPlan('');
   };
 
+  const handleTierChange = (categoryId: string, tier: CategoryTier | 'excluded') => {
+    const next = { ...tiers };
+    if (tier === 'excluded') {
+      delete next[categoryId];
+    } else {
+      next[categoryId] = tier;
+    }
+    setTiers(next);
+    setCategoryTiers(next);
+  };
+
+  const handleGroupTierChange = (categoryIds: string[], tier: CategoryTier | 'excluded') => {
+    const next = { ...tiers };
+    for (const id of categoryIds) {
+      if (tier === 'excluded') {
+        delete next[id];
+      } else {
+        next[id] = tier;
+      }
+    }
+    setTiers(next);
+    setCategoryTiers(next);
+    toast.success('Category tiers updated');
+  };
+
   // Load plans on mount if already connected
   useEffect(() => {
     if (getYnabToken()) {
@@ -68,6 +115,11 @@ export function SettingsPage() {
         .catch(() => {});
     }
   }, []);
+
+  // Filter visible category groups (skip internal/hidden)
+  const visibleGroups = cachedCategories?.filter(
+    (g) => !g.hidden && g.name !== 'Internal Master Category',
+  );
 
   return (
     <div className="mx-auto max-w-lg space-y-8">
@@ -154,6 +206,87 @@ export function SettingsPage() {
 
         {saved && <p className="text-positive text-sm">Saved!</p>}
       </section>
+
+      {/* Category Tiers */}
+      {isConnected && visibleGroups && visibleGroups.length > 0 && (
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold">Category Tiers</h2>
+            <p className="text-muted-foreground mt-1 text-sm">
+              Mark categories as <strong>Necessity</strong> (must be budgeted monthly) or{' '}
+              <strong>Flexible</strong> (feeds your daily spending amount). Unmarked categories are
+              excluded.
+            </p>
+          </div>
+
+          <div className="space-y-6">
+            {visibleGroups.map((group) => {
+              const visibleCats = group.categories.filter((c) => !c.hidden && !c.deleted);
+              if (visibleCats.length === 0) return null;
+
+              return (
+                <div
+                  key={group.id}
+                  className="grid grid-cols-[1fr_repeat(3,4.5rem)] items-center gap-x-1.5 gap-y-1.5"
+                >
+                  {/* Group header row */}
+                  <h3 className="text-muted-foreground text-xs font-semibold tracking-wider uppercase">
+                    {group.name}
+                  </h3>
+                  {TIER_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() =>
+                        handleGroupTierChange(
+                          visibleCats.map((c) => c.id),
+                          opt.value,
+                        )
+                      }
+                      className="text-muted-foreground/60 hover:bg-muted rounded-md py-0.5 text-center text-xs transition-colors"
+                      aria-label={`Set all ${group.name} to ${opt.value}`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+
+                  {/* Category rows */}
+                  {visibleCats.map((cat) => {
+                    const currentTier = tiers[cat.id] ?? 'excluded';
+                    return (
+                      <div
+                        key={cat.id}
+                        className="col-span-full grid grid-cols-subgrid items-center"
+                      >
+                        <span className="border-border bg-card rounded-lg border px-3 py-2 text-sm">
+                          {cat.name}
+                        </span>
+                        {TIER_OPTIONS.map((opt) => (
+                          <button
+                            key={opt.value}
+                            onClick={() => handleTierChange(cat.id, opt.value)}
+                            className={cn(
+                              'rounded-md py-1 text-center text-xs font-medium transition-colors',
+                              currentTier === opt.value
+                                ? opt.value === 'necessity'
+                                  ? 'bg-warning/20 text-warning'
+                                  : opt.value === 'flexible'
+                                    ? 'bg-primary/20 text-primary'
+                                    : 'bg-muted text-muted-foreground'
+                                : 'text-muted-foreground/60 hover:bg-muted',
+                            )}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Check-in Reminders */}
       <section className="space-y-3">

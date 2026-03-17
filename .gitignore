@@ -30,3 +30,6 @@ npm-debug.log*
 
 # Testing
 coverage
+e2e/screenshots
+test-results
+playwright-report

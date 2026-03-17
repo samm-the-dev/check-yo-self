@@ -5,6 +5,10 @@
       "type": "npm",
       "script": "dev",
       "label": "npm: dev",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
       "isBackground": true,
       "problemMatcher": {
         "owner": "custom",
@@ -14,7 +18,7 @@
         "background": {
           "activeOnStart": true,
           "beginsPattern": "VITE.*ready in",
-          "endsPattern": "Local:.*https://localhost:5175"
+          "endsPattern": "Local:.*https://localhost:5173"
         }
       }
     },

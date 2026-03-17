@@ -8,6 +8,7 @@ import {
   getUpcomingScheduled,
   getYnabToken,
   getPlanId,
+  getCategoryTiers,
 } from '@/services/ynab';
 import type { DailyBudgetSnapshot, TransactionSummary } from '@/types/budget';
 
@@ -40,8 +41,10 @@ export function useBudget(): BudgetState {
   const cacheEntries = useLiveQuery(() => db.cache.toArray());
 
   const loadFromCache = useCallback(async () => {
+    const tiers = getCategoryTiers();
+    const hasTiers = Object.keys(tiers).length > 0;
     const [snap, txns, bills] = await Promise.all([
-      getDailyBudgetSnapshot(),
+      getDailyBudgetSnapshot(hasTiers ? tiers : undefined),
       getTodayTransactions(),
       getUpcomingScheduled(7),
     ]);

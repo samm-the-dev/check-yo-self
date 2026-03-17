@@ -1,7 +1,13 @@
 import { useBudget } from '@/hooks/useBudget';
+import { getCategoryTiers } from '@/services/ynab';
 import { formatCurrency, todayISO, cn } from '@/lib/utils';
-import { RefreshCw, TrendingDown, Calendar, ArrowRight } from 'lucide-react';
+import { BudgetGate } from '@/components/BudgetGate';
+import { CategoryBreakdown } from '@/components/CategoryBreakdown';
+import { OverspendWarning } from '@/components/OverspendWarning';
+import { RefreshCw, TrendingDown, Calendar, ArrowRight, Settings } from 'lucide-react';
 import { Link } from 'react-router-dom';
+
+const NUDGE_DISMISSED_KEY = 'cys-tier-nudge-dismissed';
 
 export function DashboardPage() {
   const { connected, syncing, budget, todayTransactions, upcomingBills, refresh, error } =
@@ -9,6 +15,9 @@ export function DashboardPage() {
   const today = new Date(todayISO() + 'T00:00:00');
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+
+  const hasTiers = Object.keys(getCategoryTiers()).length > 0;
+  const nudgeDismissed = localStorage.getItem(NUDGE_DISMISSED_KEY) === 'true';
 
   if (!connected) {
     return (
@@ -48,46 +57,87 @@ export function DashboardPage() {
         </div>
       )}
 
+      {/* Tier setup nudge */}
+      {!hasTiers && !nudgeDismissed && budget && (
+        <div className="border-border bg-card flex items-center justify-between rounded-lg border px-4 py-3">
+          <div className="flex items-center gap-2">
+            <Settings className="text-muted-foreground h-4 w-4" />
+            <p className="text-muted-foreground text-sm">
+              <Link to="/settings" className="text-primary hover:underline">
+                Set up category tiers
+              </Link>{' '}
+              for a more accurate daily budget.
+            </p>
+          </div>
+          <button
+            onClick={() => localStorage.setItem(NUDGE_DISMISSED_KEY, 'true')}
+            className="text-muted-foreground hover:text-foreground ml-2 text-xs"
+            aria-label="Dismiss"
+          >
+            &times;
+          </button>
+        </div>
+      )}
+
       {budget && (
         <>
-          {/* The Number */}
-          <section className="border-border bg-card rounded-2xl border p-6 text-center">
-            <p className="text-muted-foreground text-sm font-medium">You can spend today</p>
-            <p
-              className={cn(
-                'mt-1 text-5xl font-bold tracking-tight',
-                budget.remainingToday < 0
-                  ? 'text-destructive'
-                  : budget.dailyAmount < 20
-                    ? 'text-warning'
-                    : 'text-primary',
-              )}
-            >
-              {formatCurrency(budget.remainingToday)}
-            </p>
-            <p className="text-muted-foreground mt-2 text-xs">
-              {formatCurrency(budget.dailyAmount)}/day · {budget.daysRemaining} days left this month
-            </p>
-          </section>
+          {budget.gate?.blocked ? (
+            <BudgetGate gate={budget.gate} />
+          ) : (
+            <>
+              {/* The Number */}
+              <section className="border-border bg-card rounded-2xl border p-6 text-center">
+                <p className="text-muted-foreground text-sm font-medium">You can spend today</p>
+                <p
+                  className={cn(
+                    'mt-1 text-5xl font-bold tracking-tight',
+                    budget.remainingToday < 0
+                      ? 'text-destructive'
+                      : budget.dailyAmount < 20
+                        ? 'text-warning'
+                        : 'text-primary',
+                  )}
+                >
+                  {formatCurrency(budget.remainingToday)}
+                </p>
+                <p className="text-muted-foreground mt-2 text-xs">
+                  {formatCurrency(budget.dailyAmount)}/day · {budget.daysRemaining} days left this
+                  month
+                </p>
+              </section>
 
-          {/* Quick stats */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="border-border bg-card rounded-xl border p-4">
-              <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
-                <TrendingDown className="h-3.5 w-3.5" />
-                Spent today
+              {/* Overspend warning */}
+              {budget.overspendWarnings && budget.overspendWarnings.length > 0 && (
+                <OverspendWarning warnings={budget.overspendWarnings} />
+              )}
+
+              {/* Category breakdown */}
+              {budget.flexibleBreakdown && (
+                <CategoryBreakdown categories={budget.flexibleBreakdown} />
+              )}
+
+              {/* Quick stats */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="border-border bg-card rounded-xl border p-4">
+                  <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
+                    <TrendingDown className="h-3.5 w-3.5" />
+                    Spent today
+                  </div>
+                  <p className="mt-1 text-lg font-semibold">{formatCurrency(budget.spentToday)}</p>
+                </div>
+                <div className="border-border bg-card rounded-xl border p-4">
+                  <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
+                    <Calendar className="h-3.5 w-3.5" />
+                    {budget.daysRemaining} days left
+                  </div>
+                  <p className="mt-1 text-lg font-semibold">
+                    {formatCurrency(budget.totalAvailable)}
+                  </p>
+                  <p className="text-muted-foreground text-xs">available</p>
+                </div>
               </div>
-              <p className="mt-1 text-lg font-semibold">{formatCurrency(budget.spentToday)}</p>
-            </div>
-            <div className="border-border bg-card rounded-xl border p-4">
-              <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
-                <Calendar className="h-3.5 w-3.5" />
-                {budget.daysRemaining} days left
-              </div>
-              <p className="mt-1 text-lg font-semibold">{formatCurrency(budget.totalAvailable)}</p>
-              <p className="text-muted-foreground text-xs">available</p>
-            </div>
-          </div>
+            </>
+          )}
         </>
       )}
 
