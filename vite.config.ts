@@ -42,6 +42,12 @@ export default defineConfig(({ command }) => ({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    commonjsOptions: {
+      include: [/node_modules/],
+      transformMixedEsModules: true,
+    },
+  },
   server: {
     port: 5173,
     strictPort: true,
