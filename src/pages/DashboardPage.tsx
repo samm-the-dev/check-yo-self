@@ -29,7 +29,17 @@ export function DashboardPage() {
   const hasTiers = Object.keys(getCategoryTiers()).length > 0;
   const nudgeDismissed = localStorage.getItem(NUDGE_DISMISSED_KEY) === 'true';
   const scheduledNudgeDismissed = localStorage.getItem(SCHEDULED_NUDGE_DISMISSED_KEY) === 'true';
+  // Month-specific key so it re-prompts each month
+  const nextMonthKey = `cys-next-month-nudge-${today.getFullYear()}-${String(today.getMonth() + 2).padStart(2, '0')}`;
+  const nextMonthNudgeDismissed = localStorage.getItem(nextMonthKey) === 'true';
   const planId = getPlanId() ?? '';
+
+  // Next month's name for the nudge
+  const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1).toLocaleDateString(
+    'en-US',
+    { month: 'long' },
+  );
+  const windowCrossesMonth = budget && budget.daysRemaining <= 14;
 
   if (!connected) {
     return (
@@ -129,6 +139,34 @@ export function DashboardPage() {
           </div>
           <button
             onClick={() => localStorage.setItem(SCHEDULED_NUDGE_DISMISSED_KEY, 'true')}
+            className="text-muted-foreground hover:text-foreground ml-2 text-xs"
+            aria-label="Dismiss"
+          >
+            &times;
+          </button>
+        </div>
+      )}
+
+      {/* Next month budget nudge */}
+      {windowCrossesMonth && !nextMonthNudgeDismissed && (
+        <div className="border-border bg-card flex items-center justify-between rounded-lg border px-4 py-3">
+          <div className="flex items-center gap-2">
+            <CalendarClock className="text-muted-foreground h-4 w-4 shrink-0" />
+            <p className="text-muted-foreground text-sm">
+              Your forecast extends into {nextMonth}.{' '}
+              <a
+                href={`https://app.ynab.com/${planId}/budget`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                Set up {nextMonth}'s budget
+              </a>{' '}
+              in YNAB for accurate projections.
+            </p>
+          </div>
+          <button
+            onClick={() => localStorage.setItem(nextMonthKey, 'true')}
             className="text-muted-foreground hover:text-foreground ml-2 text-xs"
             aria-label="Dismiss"
           >
