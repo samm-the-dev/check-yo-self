@@ -33,21 +33,6 @@ export interface FlexibleCategoryDaily {
   percentOfTotal: number;
 }
 
-/** Spending insight for a category after a notable purchase */
-export interface SpendingInsight {
-  categoryName: string;
-  /** Amount spent in the last 7 days */
-  spentThisWeek: number;
-  /** Weekly budget (balance / weeks remaining) */
-  weeklyBudget: number;
-  /** Remaining category balance after this week's spending */
-  remainingBalance: number;
-  /** Estimated date the remaining balance covers at current weekly rate */
-  coversUntil: string;
-  /** True if this week's spending exceeds the weekly budget */
-  overWeeklyBudget: boolean;
-}
-
 /** Computed daily budget — derived from YNAB category balances */
 export interface DailyBudgetSnapshot {
   /** Total available across all spending categories */
@@ -66,8 +51,6 @@ export interface DailyBudgetSnapshot {
   gate?: NecessityGateStatus;
   /** Per-category daily breakdown — present when tiers are configured */
   flexibleBreakdown?: FlexibleCategoryDaily[];
-  /** Spending insights — present when a category's weekly spend is notable */
-  spendingInsights?: SpendingInsight[];
 }
 
 export interface CategoryBalance {

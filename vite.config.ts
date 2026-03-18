@@ -5,6 +5,13 @@ import mkcert from 'vite-plugin-mkcert';
 import { VitePWA } from 'vite-plugin-pwa';
 import path from 'path';
 
+// App metadata — single source of truth for manifest + meta tags
+const APP_NAME = 'Check Yo Self';
+const APP_SHORT_NAME = 'CYS';
+const APP_DESCRIPTION =
+  'Budget tracking powered by YNAB. See your spending pace and cashflow at a glance.';
+const THEME_COLOR = '#0f172a';
+
 // https://vite.dev/config/
 export default defineConfig(({ command }) => ({
   plugins: [
@@ -12,14 +19,23 @@ export default defineConfig(({ command }) => ({
     tailwindcss(),
     // Local-only: trusted HTTPS via mkcert (skip in CI where certs aren't available)
     ...(!process.env.CI ? [mkcert()] : []),
+    {
+      name: 'inject-meta',
+      transformIndexHtml(html) {
+        return html
+          .replaceAll('%APP_NAME%', APP_NAME)
+          .replaceAll('%APP_DESCRIPTION%', APP_DESCRIPTION)
+          .replaceAll('%THEME_COLOR%', THEME_COLOR);
+      },
+    },
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: 'Check Yo Self',
-        short_name: 'CheckYoSelf',
-        description: 'Daily budgeting -- know what you can spend today.',
-        theme_color: '#0f172a',
-        background_color: '#0f172a',
+        name: APP_NAME,
+        short_name: APP_SHORT_NAME,
+        description: APP_DESCRIPTION,
+        theme_color: THEME_COLOR,
+        background_color: THEME_COLOR,
         display: 'standalone',
         scope: '/check-yo-self/',
         start_url: '/check-yo-self/',

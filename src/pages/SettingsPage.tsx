@@ -254,7 +254,7 @@ export function SettingsPage() {
                 <div>
                   <dt className="text-foreground inline font-semibold">Skip</dt>
                   {' - '}
-                  <dd className="inline">Doesn't affect your weekly budget or gate.</dd>
+                  <dd className="inline">Not tracked.</dd>
                 </div>
               </dl>
 
