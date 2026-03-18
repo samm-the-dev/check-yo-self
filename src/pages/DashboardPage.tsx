@@ -63,19 +63,19 @@ export function DashboardPage() {
             })}
           </p>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-3">
           <a
             href={`https://app.ynab.com/${planId}/budget`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-muted-foreground hover:bg-accent hover:text-foreground inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs transition-colors"
+            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs transition-colors"
           >
             YNAB <ExternalLink className="h-3 w-3" />
           </a>
           <button
             onClick={refresh}
             disabled={syncing}
-            className="text-muted-foreground hover:bg-accent hover:text-foreground rounded-lg p-2 transition-colors disabled:opacity-50"
+            className="text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
             aria-label="Refresh from YNAB"
           >
             <RefreshCw className={cn('h-4 w-4', syncing && 'animate-spin')} />

@@ -106,7 +106,10 @@ export function CashflowChart({ budget }: CashflowChartProps) {
         <TrendingUp className="h-3.5 w-3.5" />
         Projected cashflow
       </h2>
-      <div className="border-border bg-card text-muted-foreground borderpx-3 rounded-xl">
+      <div
+        className="border-border bg-card text-muted-foreground borderpx-3 rounded-xl [&_.recharts-surface]:!outline-none [&_.recharts-wrapper]:!outline-none"
+        onFocus={(e) => e.target.blur()}
+      >
         <ResponsiveContainer width="100%" height={180}>
           <LineChart data={projection} margin={{ top: 24, right: 0, bottom: 0, left: 0 }}>
             <defs>

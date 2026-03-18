@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useInstallPrompt } from '@/hooks/useInstallPrompt';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/db';
 import {
@@ -13,7 +14,7 @@ import {
 } from '@/services/ynab';
 import type { CategoryTier, CategoryTierMap } from '@/types/budget';
 import type { CategoryGroupWithCategories } from 'ynab';
-import { ExternalLink, Check, Trash2, ChevronDown } from 'lucide-react';
+import { ExternalLink, Check, Trash2, ChevronDown, Download } from 'lucide-react';
 
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -31,6 +32,7 @@ export function SettingsPage() {
     return raw ? parseFloat(raw) : 0;
   });
   const [tiersExpanded, setTiersExpanded] = useState(false);
+  const { isInstallable, installApp } = useInstallPrompt();
 
   const updateReserve = (val: number) => {
     setReserveState(val);
@@ -346,6 +348,17 @@ export function SettingsPage() {
           </div>
         </div>
       </section>
+
+      {/* Install */}
+      {isInstallable && (
+        <button
+          onClick={() => void installApp()}
+          className="text-muted-foreground hover:text-foreground flex w-full items-center justify-center gap-2 rounded-lg py-3 text-sm transition-colors"
+        >
+          <Download className="h-4 w-4" />
+          Install app
+        </button>
+      )}
     </div>
   );
 }
