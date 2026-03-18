@@ -13,59 +13,62 @@ const APP_DESCRIPTION =
 const THEME_COLOR = '#0f172a';
 
 // https://vite.dev/config/
-export default defineConfig(({ command }) => ({
-  plugins: [
-    react(),
-    tailwindcss(),
-    // Local-only: trusted HTTPS via mkcert (skip in CI where certs aren't available)
-    ...(!process.env.CI ? [mkcert()] : []),
-    {
-      name: 'inject-meta',
-      transformIndexHtml(html) {
-        return html
-          .replaceAll('%APP_NAME%', APP_NAME)
-          .replaceAll('%APP_DESCRIPTION%', APP_DESCRIPTION)
-          .replaceAll('%THEME_COLOR%', THEME_COLOR);
+export default defineConfig(({ command }) => {
+  const ghpBuild = command === 'build' && !process.env.VERCEL;
+  return {
+    plugins: [
+      react(),
+      tailwindcss(),
+      // Local-only: trusted HTTPS via mkcert (skip in CI where certs aren't available)
+      ...(!process.env.CI ? [mkcert()] : []),
+      {
+        name: 'inject-meta',
+        transformIndexHtml(html) {
+          return html
+            .replaceAll('%APP_NAME%', APP_NAME)
+            .replaceAll('%APP_DESCRIPTION%', APP_DESCRIPTION)
+            .replaceAll('%THEME_COLOR%', THEME_COLOR);
+        },
+      },
+      VitePWA({
+        registerType: 'autoUpdate',
+        manifest: {
+          name: APP_NAME,
+          short_name: APP_SHORT_NAME,
+          description: APP_DESCRIPTION,
+          theme_color: THEME_COLOR,
+          background_color: THEME_COLOR,
+          display: 'standalone',
+          scope: ghpBuild ? '/check-yo-self/' : '/',
+          start_url: ghpBuild ? '/check-yo-self/' : '/',
+          icons: [
+            { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+            { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
+            {
+              src: 'pwa-maskable-512x512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable',
+            },
+          ],
+        },
+      }),
+    ],
+    base: ghpBuild ? '/check-yo-self/' : '/',
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, './src'),
       },
     },
-    VitePWA({
-      registerType: 'autoUpdate',
-      manifest: {
-        name: APP_NAME,
-        short_name: APP_SHORT_NAME,
-        description: APP_DESCRIPTION,
-        theme_color: THEME_COLOR,
-        background_color: THEME_COLOR,
-        display: 'standalone',
-        scope: '/check-yo-self/',
-        start_url: '/check-yo-self/',
-        icons: [
-          { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
-          {
-            src: 'pwa-maskable-512x512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'maskable',
-          },
-        ],
+    build: {
+      commonjsOptions: {
+        include: [/node_modules/],
+        transformMixedEsModules: true,
       },
-    }),
-  ],
-  base: command === 'build' ? '/check-yo-self/' : '/',
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
     },
-  },
-  build: {
-    commonjsOptions: {
-      include: [/node_modules/],
-      transformMixedEsModules: true,
+    server: {
+      port: 5173,
+      strictPort: true,
     },
-  },
-  server: {
-    port: 5173,
-    strictPort: true,
-  },
-}));
+  };
+});
