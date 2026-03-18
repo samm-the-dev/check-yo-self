@@ -55,7 +55,7 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
             const dailyBudget = cat.dailyAmount;
             const daysConsumed =
               dailyBudget > 0 && cat.spentThisWeek > 0 ? cat.spentThisWeek / dailyBudget : 0;
-            const overspent = cat.balance <= 0 || daysConsumed >= WINDOW;
+            const overspent = cat.balance < 0 || daysConsumed >= WINDOW;
             // Fill maps consumed days onto the 21-day timeline:
             // 0 days = empty, LOOKBACK (7) = at today marker, WINDOW (21) = full
             const coverFill = overspent ? 1 : daysConsumed / WINDOW;
