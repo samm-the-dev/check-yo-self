@@ -55,14 +55,9 @@ export function CategoryBreakdown({ categories, daysRemaining }: CategoryBreakdo
 
             // How many days from today the balance covers at current pace
             const daysCovered = coverageDays(cat.balance, cat.spentThisWeek, daysRemaining);
-            const coversFullMonth = daysCovered >= daysRemaining;
-
             // Fill extends from left edge to coverage point on the 21-day timeline
             // Coverage of N days from today = (LOOKBACK + N) / WINDOW
             const coverFill = Math.min(1, (LOOKBACK + daysCovered) / WINDOW);
-
-            // Is the coverage point past the today marker?
-            const aheadOfToday = coverFill > TODAY_PERCENT / 100;
 
             return (
               <div key={`${cat.groupName}-${cat.name}`} className="py-1.5">

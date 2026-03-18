@@ -24,7 +24,6 @@ export function DashboardPage() {
   const { connected, syncing, budget, recentTransactions, upcomingBills, refresh, error } =
     useBudget();
   const today = new Date(todayISO() + 'T00:00:00');
-  const hour = new Date().getHours();
 
   const hasTiers = Object.keys(getCategoryTiers()).length > 0;
   const nudgeDismissed = localStorage.getItem(NUDGE_DISMISSED_KEY) === 'true';
