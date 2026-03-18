@@ -101,14 +101,19 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
                 {overspent ? (
                   <div className="mt-1 space-y-0.5">
                     {(() => {
-                      const overspendAmt =
+                      const paceOverspend =
                         dailyBudget > 0
                           ? Math.max(0, cat.spentThisWeek - dailyBudget * LOOKBACK)
                           : cat.spentThisWeek;
+                      // Use pace-based overspend when available, fall back to balance deficit
+                      const overspendAmt =
+                        paceOverspend > 0 ? paceOverspend : Math.abs(cat.balance);
+                      const overspendLabel = paceOverspend > 0 ? 'this week' : 'in category';
+                      const catKey = `${cat.groupName}-${cat.name}`;
                       const donor = categories
                         .filter(
                           (c) =>
-                            c.name !== cat.name &&
+                            `${c.groupName}-${c.name}` !== catKey &&
                             c.balance > 0 &&
                             c.balance >= overspendAmt * 0.25,
                         )
@@ -116,7 +121,7 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
                       return (
                         <>
                           <p className="text-destructive text-xs">
-                            Overspent by {formatCurrency(overspendAmt)} this week
+                            Overspent by {formatCurrency(overspendAmt)} {overspendLabel}
                           </p>
                           {donor && (
                             <p className="text-muted-foreground text-xs">
