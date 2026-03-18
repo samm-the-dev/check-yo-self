@@ -50,6 +50,8 @@
 }
 
 :root {
+  font-family: 'Nunito Sans', sans-serif;
+
   /* Light mode */
   --background: hsl(0 0% 100%);
   --foreground: hsl(222.2 84% 4.9%);
@@ -164,6 +166,10 @@ body {
 
 .skip-to-content:focus {
   left: 0;
+}
+
+.font-display {
+  font-family: 'Quicksand', sans-serif;
 }
 
 /* Hide native number input spinners */

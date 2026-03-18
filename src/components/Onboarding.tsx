@@ -55,8 +55,10 @@ export function Onboarding({ onComplete }: OnboardingProps) {
   return (
     <div className="mx-auto max-w-lg space-y-6 py-8">
       <header className="text-center">
-        <h1 className="text-3xl font-bold">Check Yo Self</h1>
-        <p className="text-muted-foreground mt-2">Daily budget coaching powered by YNAB</p>
+        <h1 className="font-display text-primary text-3xl font-bold tracking-wide uppercase">
+          Check Yo Self!
+        </h1>
+        <p className="text-muted-foreground mt-2">Budget tracking powered by YNAB</p>
       </header>
 
       {step === 'intro' && (
@@ -207,7 +209,7 @@ export function Onboarding({ onComplete }: OnboardingProps) {
           <div className="border-border bg-card space-y-4 rounded-2xl border p-6">
             <h2 className="font-semibold">Which budget?</h2>
             <p className="text-muted-foreground text-sm">
-              You have multiple budgets. Pick the one you want to track daily.
+              You have multiple budgets. Pick the one you want to track.
             </p>
             <div className="space-y-2">
               {plans.map((plan) => (

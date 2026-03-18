@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="g" x1="96" y1="0" x2="416" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4ade80"/>
+      <stop offset="33%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#ef4444"/>
+    </linearGradient>
+    <linearGradient id="gf" x1="96" y1="0" x2="416" y2="0" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4ade80" stop-opacity="0.2"/>
+      <stop offset="33%" stop-color="#f59e0b" stop-opacity="0.2"/>
+      <stop offset="100%" stop-color="#ef4444" stop-opacity="0.2"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="#0f172a"/>
+
+  <!-- Bar 1: under budget (fill stops before today marker) -->
+  <rect x="96" y="112" width="320" height="36" rx="18" fill="url(#gf)"/>
+  <clipPath id="c1"><rect x="96" y="112" width="140" height="36" rx="18"/></clipPath>
+  <rect x="96" y="112" width="320" height="36" rx="18" fill="url(#g)" clip-path="url(#c1)"/>
+  <line x1="202" y1="104" x2="202" y2="156" stroke="white" stroke-width="6" opacity="0.7"/>
+
+  <!-- Bar 2: over budget (fill past today marker into yellow/red) -->
+  <rect x="96" y="192" width="320" height="36" rx="18" fill="url(#gf)"/>
+  <clipPath id="c2"><rect x="96" y="192" width="280" height="36" rx="18"/></clipPath>
+  <rect x="96" y="192" width="320" height="36" rx="18" fill="url(#g)" clip-path="url(#c2)"/>
+  <line x1="202" y1="184" x2="202" y2="236" stroke="white" stroke-width="6" opacity="0.7"/>
+
+  <!-- Cashflow line -->
+  <polyline
+    points="96,340 150,330 202,350 260,320 310,380 360,300 416,280"
+    fill="none" stroke="#4ade80" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"
+  />
+  <!-- Subtle fill under line -->
+  <polygon
+    points="96,340 150,330 202,350 260,320 310,380 360,300 416,280 416,420 96,420"
+    fill="#4ade80" opacity="0.08"
+  />
+  <!-- Today marker on line area -->
+  <line x1="202" y1="280" x2="202" y2="420" stroke="white" stroke-width="6" stroke-dasharray="8 6" opacity="0.5"/>
+</svg>

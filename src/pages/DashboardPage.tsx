@@ -25,7 +25,6 @@ export function DashboardPage() {
     useBudget();
   const today = new Date(todayISO() + 'T00:00:00');
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
   const hasTiers = Object.keys(getCategoryTiers()).length > 0;
   const nudgeDismissed = localStorage.getItem(NUDGE_DISMISSED_KEY) === 'true';
@@ -35,7 +34,6 @@ export function DashboardPage() {
   if (!connected) {
     return (
       <div className="mx-auto max-w-lg space-y-6">
-        <h1 className="text-2xl font-bold">{greeting}</h1>
         <ConnectPrompt />
       </div>
     );
@@ -45,7 +43,9 @@ export function DashboardPage() {
     <div className="mx-auto max-w-lg space-y-6">
       <header className="flex items-start justify-between">
         <div>
-          <p className="text-muted-foreground text-sm">{greeting}</p>
+          <h1 className="font-display text-primary text-lg font-bold tracking-wide uppercase">
+            Check Yo Self!
+          </h1>
           <p className="text-muted-foreground text-sm">
             {today.toLocaleDateString('en-US', {
               weekday: 'long',
@@ -89,7 +89,7 @@ export function DashboardPage() {
               <Link to="/settings" className="text-primary hover:underline">
                 Set up category tiers
               </Link>{' '}
-              for a more accurate daily budget.
+              for more accurate budget tracking.
             </p>
           </div>
           <button
@@ -258,7 +258,7 @@ function ConnectPrompt() {
     <div className="border-border bg-card/50 rounded-2xl border border-dashed p-8 text-center">
       <p className="text-lg font-semibold">Connect YNAB</p>
       <p className="text-muted-foreground mt-2 text-sm">
-        Link your YNAB account to see your daily budget and get coaching insights.
+        Link your YNAB account to track your spending and budget.
       </p>
       <Link
         to="/settings"

@@ -14,8 +14,7 @@ export function BudgetGate({ gate }: BudgetGateProps) {
       </div>
 
       <p className="text-muted-foreground mt-2 text-sm">
-        These categories need a budget for this month before your daily spending amount can be
-        calculated.
+        These categories need a budget for this month before your spending pace can be calculated.
       </p>
 
       <ul className="mt-3 space-y-1.5">
