@@ -187,10 +187,7 @@ export function DashboardPage() {
 
               {/* Category breakdown */}
               {budget.flexibleBreakdown && (
-                <CategoryBreakdown
-                  categories={budget.flexibleBreakdown}
-                  daysRemaining={budget.daysRemaining}
-                />
+                <CategoryBreakdown categories={budget.flexibleBreakdown} planId={planId} />
               )}
             </>
           )}
