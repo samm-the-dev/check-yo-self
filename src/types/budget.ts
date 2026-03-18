@@ -51,7 +51,6 @@ export interface DailyBudgetSnapshot {
   gate?: NecessityGateStatus;
   /** Per-category daily breakdown — present when tiers are configured */
   flexibleBreakdown?: FlexibleCategoryDaily[];
-  /** Spending insights — present when a category's weekly spend is notable */
 }
 
 export interface CategoryBalance {

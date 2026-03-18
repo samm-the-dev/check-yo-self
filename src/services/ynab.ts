@@ -142,8 +142,6 @@ function milliToDollars(milliunits: number): number {
   return ynab.utils.convertMilliUnitsToCurrencyAmount(milliunits, 2);
 }
 
-/** Threshold: flag categories where weekly spend exceeds 80% of weekly budget */
-
 /** Build the daily budget snapshot from cached YNAB data */
 export async function getDailyBudgetSnapshot(
   tiers?: CategoryTierMap,

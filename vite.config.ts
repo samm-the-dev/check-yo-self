@@ -23,8 +23,9 @@ export default defineConfig(({ command }) => ({
       name: 'inject-meta',
       transformIndexHtml(html) {
         return html
-          .replace('%APP_DESCRIPTION%', APP_DESCRIPTION)
-          .replace('%THEME_COLOR%', THEME_COLOR);
+          .replaceAll('%APP_NAME%', APP_NAME)
+          .replaceAll('%APP_DESCRIPTION%', APP_DESCRIPTION)
+          .replaceAll('%THEME_COLOR%', THEME_COLOR);
       },
     },
     VitePWA({
