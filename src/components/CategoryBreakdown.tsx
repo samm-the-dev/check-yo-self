@@ -86,7 +86,7 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
                       <div
                         className="h-full rounded-full"
                         style={{
-                          width: `${100 / coverFill}%`,
+                          width: `${100 / Math.max(coverFill, 0.05)}%`,
                           background: `linear-gradient(to right, hsl(152 60% 50%), hsl(38 92% 50%) ${TODAY_PERCENT}%, hsl(0 65% 50%))`,
                         }}
                       />
@@ -100,13 +100,11 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
                 </div>
                 {overspent ? (
                   <div className="mt-1 space-y-0.5">
-                    <p className="text-destructive text-xs">
-                      Overspent by{' '}
-                      {formatCurrency(Math.abs(cat.spentThisWeek - dailyBudget * LOOKBACK))} this
-                      week
-                    </p>
                     {(() => {
-                      const overspendAmt = Math.abs(cat.spentThisWeek - dailyBudget * LOOKBACK);
+                      const overspendAmt =
+                        dailyBudget > 0
+                          ? Math.max(0, cat.spentThisWeek - dailyBudget * LOOKBACK)
+                          : cat.spentThisWeek;
                       const donor = categories
                         .filter(
                           (c) =>
@@ -115,11 +113,18 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
                             c.balance >= overspendAmt * 0.25,
                         )
                         .sort((a, b) => b.balance - a.balance)[0];
-                      return donor ? (
-                        <p className="text-muted-foreground text-xs">
-                          {donor.name} has {formatCurrency(donor.balance)} available
-                        </p>
-                      ) : null;
+                      return (
+                        <>
+                          <p className="text-destructive text-xs">
+                            Overspent by {formatCurrency(overspendAmt)} this week
+                          </p>
+                          {donor && (
+                            <p className="text-muted-foreground text-xs">
+                              {donor.name} has {formatCurrency(donor.balance)} available
+                            </p>
+                          )}
+                        </>
+                      );
                     })()}
                     {planId && (
                       <a
