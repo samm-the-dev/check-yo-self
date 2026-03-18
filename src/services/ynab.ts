@@ -7,7 +7,6 @@ import type {
   CategoryTierMap,
   FlexibleCategoryDaily,
   NecessityGateStatus,
-  SpendingInsight,
   TransactionSummary,
 } from '@/types/budget';
 import { todayISO } from '@/lib/utils';
@@ -144,7 +143,6 @@ function milliToDollars(milliunits: number): number {
 }
 
 /** Threshold: flag categories where weekly spend exceeds 80% of weekly budget */
-const WEEKLY_SPEND_THRESHOLD = 0.8;
 
 /** Build the daily budget snapshot from cached YNAB data */
 export async function getDailyBudgetSnapshot(
@@ -225,11 +223,6 @@ export async function getDailyBudgetSnapshot(
       todayTxns,
       transactions,
     );
-    snapshot.spendingInsights = buildSpendingInsights(
-      snapshot.flexibleBreakdown,
-      daysRemaining,
-      transactions,
-    );
   }
 
   return snapshot;
@@ -307,51 +300,6 @@ function buildFlexibleBreakdown(
       percentOfTotal: totalDailyAmount > 0 ? catDailyAmount / totalDailyAmount : 0,
     };
   });
-}
-
-/** Build spending insights based on rolling weekly budget */
-function buildSpendingInsights(
-  breakdown: FlexibleCategoryDaily[],
-  daysRemaining: number,
-  transactions: ynab.TransactionDetail[],
-): SpendingInsight[] {
-  const weeksRemaining = Math.max(daysRemaining / 7, 0.5);
-  const today = todayISO();
-  const weekAgo = new Date(today + 'T00:00:00');
-  weekAgo.setDate(weekAgo.getDate() - 7);
-  const weekAgoStr = weekAgo.toISOString().slice(0, 10);
-
-  // Sum spending per category over the last 7 days
-  const weeklySpend = new Map<string, number>();
-  for (const t of transactions) {
-    if (t.date >= weekAgoStr && t.amount < 0) {
-      const cat = t.category_name ?? 'Uncategorized';
-      weeklySpend.set(cat, (weeklySpend.get(cat) ?? 0) + Math.abs(milliToDollars(t.amount)));
-    }
-  }
-
-  return breakdown
-    .map((cat) => {
-      const spentThisWeek = weeklySpend.get(cat.name) ?? 0;
-      const weeklyBudget = cat.balance / weeksRemaining;
-      const remainingBalance = cat.balance;
-
-      // How many days this balance covers at the current weekly rate
-      const dailyRate = spentThisWeek > 0 ? spentThisWeek / 7 : 0;
-      const daysCovered = dailyRate > 0 ? Math.floor(remainingBalance / dailyRate) : daysRemaining;
-      const coversUntil = new Date(today + 'T00:00:00');
-      coversUntil.setDate(coversUntil.getDate() + Math.min(daysCovered, daysRemaining));
-
-      return {
-        categoryName: cat.name,
-        spentThisWeek,
-        weeklyBudget,
-        remainingBalance,
-        coversUntil: coversUntil.toISOString().slice(0, 10),
-        overWeeklyBudget: spentThisWeek >= weeklyBudget * WEEKLY_SPEND_THRESHOLD,
-      };
-    })
-    .filter((insight) => insight.spentThisWeek > 0 && insight.overWeeklyBudget);
 }
 
 /** Get recent transactions (last 7 days) as summaries */
