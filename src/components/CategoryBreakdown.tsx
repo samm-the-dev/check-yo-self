@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, ExternalLink } from 'lucide-react';
 import { formatCurrency, todayISO, cn } from '@/lib/utils';
 import type { FlexibleCategoryDaily } from '@/types/budget';
 
@@ -13,13 +13,13 @@ const TODAY_PERCENT = (LOOKBACK / WINDOW) * 100;
 
 interface CategoryBreakdownProps {
   categories: FlexibleCategoryDaily[];
-  daysRemaining: number;
+  planId: string;
 }
 
-function coverageDays(balance: number, spentThisWeek: number, daysRemaining: number): number {
-  if (balance <= 0 || spentThisWeek <= 0) return daysRemaining;
+function coverageDays(balance: number, spentThisWeek: number): number {
+  if (balance <= 0 || spentThisWeek <= 0) return LOOKAHEAD;
   const dailyRate = spentThisWeek / 7;
-  return Math.min(Math.floor(balance / dailyRate), daysRemaining);
+  return Math.min(Math.floor(balance / dailyRate), LOOKAHEAD);
 }
 
 function formatCoverDate(daysCovered: number): string {
@@ -28,7 +28,7 @@ function formatCoverDate(daysCovered: number): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-export function CategoryBreakdown({ categories, daysRemaining }: CategoryBreakdownProps) {
+export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps) {
   const [expanded, setExpanded] = useState(true);
 
   if (categories.length === 0) return null;
@@ -51,13 +51,14 @@ export function CategoryBreakdown({ categories, daysRemaining }: CategoryBreakdo
       {expanded && (
         <div className="border-border space-y-1 border-t px-4 pt-2 pb-3">
           {categories.map((cat) => {
-            const overspent = cat.balance <= 0;
-
-            // How many days from today the balance covers at current pace
-            const daysCovered = coverageDays(cat.balance, cat.spentThisWeek, daysRemaining);
-            // Fill extends from left edge to coverage point on the 21-day timeline
-            // Coverage of N days from today = (LOOKBACK + N) / WINDOW
-            const coverFill = Math.min(1, (LOOKBACK + daysCovered) / WINDOW);
+            // How many days of budget this week's spending has consumed
+            const dailyBudget = cat.dailyAmount;
+            const daysConsumed =
+              dailyBudget > 0 && cat.spentThisWeek > 0 ? cat.spentThisWeek / dailyBudget : 0;
+            const overspent = cat.balance <= 0 || daysConsumed >= WINDOW;
+            // Fill maps consumed days onto the 21-day timeline:
+            // 0 days = empty, LOOKBACK (7) = at today marker, WINDOW (21) = full
+            const coverFill = overspent ? 1 : daysConsumed / WINDOW;
 
             return (
               <div key={`${cat.groupName}-${cat.name}`} className="py-1.5">
@@ -77,7 +78,7 @@ export function CategoryBreakdown({ categories, daysRemaining }: CategoryBreakdo
                       className="absolute inset-0 rounded-full"
                       style={{ background: 'hsl(0 65% 50%)' }}
                     />
-                  ) : (
+                  ) : coverFill > 0 ? (
                     <div
                       className="absolute inset-y-0 left-0 overflow-hidden rounded-full transition-all"
                       style={{ width: `${coverFill * 100}%` }}
@@ -90,7 +91,7 @@ export function CategoryBreakdown({ categories, daysRemaining }: CategoryBreakdo
                         }}
                       />
                     </div>
-                  )}
+                  ) : null}
                   {/* Today marker */}
                   <div
                     className="bg-foreground/60 absolute top-[-1px] bottom-[-1px] w-[2px] rounded-full"
@@ -98,12 +99,44 @@ export function CategoryBreakdown({ categories, daysRemaining }: CategoryBreakdo
                   />
                 </div>
                 {overspent ? (
-                  <p className="text-destructive mt-1 text-xs">
-                    Overspent — consider rebalancing in YNAB
-                  </p>
-                ) : cat.spentThisWeek > cat.weeklyAmount ? (
+                  <div className="mt-1 space-y-0.5">
+                    <p className="text-destructive text-xs">
+                      Overspent by{' '}
+                      {formatCurrency(Math.abs(cat.spentThisWeek - dailyBudget * LOOKBACK))} this
+                      week
+                    </p>
+                    {(() => {
+                      const overspendAmt = Math.abs(cat.spentThisWeek - dailyBudget * LOOKBACK);
+                      const donor = categories
+                        .filter(
+                          (c) =>
+                            c.name !== cat.name &&
+                            c.balance > 0 &&
+                            c.balance >= overspendAmt * 0.25,
+                        )
+                        .sort((a, b) => b.balance - a.balance)[0];
+                      return donor ? (
+                        <p className="text-muted-foreground text-xs">
+                          {donor.name} has {formatCurrency(donor.balance)} available
+                        </p>
+                      ) : null;
+                    })()}
+                    {planId && (
+                      <a
+                        href={`https://app.ynab.com/${planId}/budget`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary inline-flex items-center gap-1 text-xs hover:underline"
+                      >
+                        Rebalance in YNAB
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    )}
+                  </div>
+                ) : daysConsumed > LOOKBACK ? (
                   <p className="text-muted-foreground mt-1 text-xs">
-                    Should cover through {formatCoverDate(daysCovered)}
+                    Should cover through{' '}
+                    {formatCoverDate(coverageDays(cat.balance, cat.spentThisWeek))}
                   </p>
                 ) : (
                   <p className="text-muted-foreground mt-1 text-xs">
