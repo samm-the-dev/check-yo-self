@@ -14,28 +14,38 @@ export interface NecessityGateStatus {
   ynabBudgetLink: string;
 }
 
-/** Per-category daily budget breakdown for flexible categories */
+/** Per-category budget breakdown for flexible categories */
 export interface FlexibleCategoryDaily {
   name: string;
   groupName: string;
   balance: number;
   /** balance / daysRemaining */
   dailyAmount: number;
+  /** Weekly budget (dailyAmount * 7) */
+  weeklyAmount: number;
+  /** Spent in the last 7 days */
+  spentThisWeek: number;
   /** Today's transactions in this category */
   spentToday: number;
   /** dailyAmount - spentToday */
   remainingToday: number;
-  /** Share of total flexible daily budget (0–1) */
+  /** Share of total flexible daily budget (0-1) */
   percentOfTotal: number;
 }
 
-/** Warning when spending is concentrated in one category */
-export interface OverspendWarning {
+/** Spending insight for a category after a notable purchase */
+export interface SpendingInsight {
   categoryName: string;
-  spentAmount: number;
-  dailyBudget: number;
-  /** Fraction of total daily budget used (0–1) */
-  percentUsed: number;
+  /** Amount spent in the last 7 days */
+  spentThisWeek: number;
+  /** Weekly budget (balance / weeks remaining) */
+  weeklyBudget: number;
+  /** Remaining category balance after this week's spending */
+  remainingBalance: number;
+  /** Estimated date the remaining balance covers at current weekly rate */
+  coversUntil: string;
+  /** True if this week's spending exceeds the weekly budget */
+  overWeeklyBudget: boolean;
 }
 
 /** Computed daily budget — derived from YNAB category balances */
@@ -56,8 +66,8 @@ export interface DailyBudgetSnapshot {
   gate?: NecessityGateStatus;
   /** Per-category daily breakdown — present when tiers are configured */
   flexibleBreakdown?: FlexibleCategoryDaily[];
-  /** Overspend warnings — present when a single category dominates today's spend */
-  overspendWarnings?: OverspendWarning[];
+  /** Spending insights — present when a category's weekly spend is notable */
+  spendingInsights?: SpendingInsight[];
 }
 
 export interface CategoryBalance {

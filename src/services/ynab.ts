@@ -7,7 +7,7 @@ import type {
   CategoryTierMap,
   FlexibleCategoryDaily,
   NecessityGateStatus,
-  OverspendWarning,
+  SpendingInsight,
   TransactionSummary,
 } from '@/types/budget';
 import { todayISO } from '@/lib/utils';
@@ -143,8 +143,8 @@ function milliToDollars(milliunits: number): number {
   return ynab.utils.convertMilliUnitsToCurrencyAmount(milliunits, 2);
 }
 
-/** Overspend threshold — warn if one category uses this fraction of total daily budget */
-const OVERSPEND_THRESHOLD = 0.8;
+/** Threshold: flag categories where weekly spend exceeds 80% of weekly budget */
+const WEEKLY_SPEND_THRESHOLD = 0.8;
 
 /** Build the daily budget snapshot from cached YNAB data */
 export async function getDailyBudgetSnapshot(
@@ -223,8 +223,13 @@ export async function getDailyBudgetSnapshot(
       daysRemaining,
       dailyAmount,
       todayTxns,
+      transactions,
     );
-    snapshot.overspendWarnings = buildOverspendWarnings(snapshot.flexibleBreakdown, dailyAmount);
+    snapshot.spendingInsights = buildSpendingInsights(
+      snapshot.flexibleBreakdown,
+      daysRemaining,
+      transactions,
+    );
   }
 
   return snapshot;
@@ -257,8 +262,12 @@ function buildFlexibleBreakdown(
   daysRemaining: number,
   totalDailyAmount: number,
   todayTxns: ynab.TransactionDetail[],
+  allTransactions: ynab.TransactionDetail[],
 ): FlexibleCategoryDaily[] {
-  const flexibleCats = categories.filter((cat) => tiers[cat.id] === 'flexible' && cat.balance > 0);
+  const today = todayISO();
+  const weekAgo = new Date(today + 'T00:00:00');
+  weekAgo.setDate(weekAgo.getDate() - 7);
+  const weekAgoStr = weekAgo.toISOString().slice(0, 10);
 
   // Group today's spending by category name
   const spentByCategory = new Map<string, number>();
@@ -268,14 +277,31 @@ function buildFlexibleBreakdown(
     spentByCategory.set(catName, current + Math.abs(milliToDollars(txn.amount)));
   }
 
+  // Group last 7 days spending by category name
+  const weeklySpentByCategory = new Map<string, number>();
+  for (const txn of allTransactions) {
+    if (txn.date >= weekAgoStr && txn.amount < 0) {
+      const catName = txn.category_name ?? 'Uncategorized';
+      const current = weeklySpentByCategory.get(catName) ?? 0;
+      weeklySpentByCategory.set(catName, current + Math.abs(milliToDollars(txn.amount)));
+    }
+  }
+
+  const flexibleCats = categories.filter((cat) => tiers[cat.id] === 'flexible');
+
   return flexibleCats.map((cat) => {
     const catDailyAmount = cat.balance / daysRemaining;
     const catSpentToday = spentByCategory.get(cat.name) ?? 0;
+    // Weekly runway: how much you can spend per week to make balance last
+    const weeksRemaining = Math.max(daysRemaining / 7, 0.5);
+    const catWeeklyAmount = cat.balance / weeksRemaining;
     return {
       name: cat.name,
       groupName: cat.groupName,
       balance: cat.balance,
       dailyAmount: catDailyAmount,
+      weeklyAmount: catWeeklyAmount,
+      spentThisWeek: weeklySpentByCategory.get(cat.name) ?? 0,
       spentToday: catSpentToday,
       remainingToday: catDailyAmount - catSpentToday,
       percentOfTotal: totalDailyAmount > 0 ? catDailyAmount / totalDailyAmount : 0,
@@ -283,56 +309,173 @@ function buildFlexibleBreakdown(
   });
 }
 
-/** Warn if one category consumes most of today's daily budget */
-function buildOverspendWarnings(
+/** Build spending insights based on rolling weekly budget */
+function buildSpendingInsights(
   breakdown: FlexibleCategoryDaily[],
-  totalDailyAmount: number,
-): OverspendWarning[] {
-  if (totalDailyAmount <= 0) return [];
+  daysRemaining: number,
+  transactions: ynab.TransactionDetail[],
+): SpendingInsight[] {
+  const weeksRemaining = Math.max(daysRemaining / 7, 0.5);
+  const today = todayISO();
+  const weekAgo = new Date(today + 'T00:00:00');
+  weekAgo.setDate(weekAgo.getDate() - 7);
+  const weekAgoStr = weekAgo.toISOString().slice(0, 10);
+
+  // Sum spending per category over the last 7 days
+  const weeklySpend = new Map<string, number>();
+  for (const t of transactions) {
+    if (t.date >= weekAgoStr && t.amount < 0) {
+      const cat = t.category_name ?? 'Uncategorized';
+      weeklySpend.set(cat, (weeklySpend.get(cat) ?? 0) + Math.abs(milliToDollars(t.amount)));
+    }
+  }
 
   return breakdown
-    .filter((cat) => cat.spentToday / totalDailyAmount >= OVERSPEND_THRESHOLD)
-    .map((cat) => ({
-      categoryName: cat.name,
-      spentAmount: cat.spentToday,
-      dailyBudget: totalDailyAmount,
-      percentUsed: cat.spentToday / totalDailyAmount,
-    }));
+    .map((cat) => {
+      const spentThisWeek = weeklySpend.get(cat.name) ?? 0;
+      const weeklyBudget = cat.balance / weeksRemaining;
+      const remainingBalance = cat.balance;
+
+      // How many days this balance covers at the current weekly rate
+      const dailyRate = spentThisWeek > 0 ? spentThisWeek / 7 : 0;
+      const daysCovered = dailyRate > 0 ? Math.floor(remainingBalance / dailyRate) : daysRemaining;
+      const coversUntil = new Date(today + 'T00:00:00');
+      coversUntil.setDate(coversUntil.getDate() + Math.min(daysCovered, daysRemaining));
+
+      return {
+        categoryName: cat.name,
+        spentThisWeek,
+        weeklyBudget,
+        remainingBalance,
+        coversUntil: coversUntil.toISOString().slice(0, 10),
+        overWeeklyBudget: spentThisWeek >= weeklyBudget * WEEKLY_SPEND_THRESHOLD,
+      };
+    })
+    .filter((insight) => insight.spentThisWeek > 0 && insight.overWeeklyBudget);
 }
 
-/** Get today's transactions as summaries for coaching */
-export async function getTodayTransactions(): Promise<TransactionSummary[]> {
+/** Get recent transactions (last 7 days) as summaries */
+export async function getRecentTransactions(days = 7): Promise<TransactionSummary[]> {
   const transactions = await readCache<ynab.TransactionDetail[]>('transactions');
   if (!transactions) return [];
 
-  const today = todayISO();
+  const cutoff = new Date(todayISO() + 'T00:00:00');
+  cutoff.setDate(cutoff.getDate() - days);
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+
   return transactions
-    .filter((t) => t.date === today)
+    .filter((t) => t.date >= cutoffStr)
+    .sort((a, b) => b.date.localeCompare(a.date))
     .map((t) => ({
       payee: t.payee_name ?? 'Unknown',
-      amount: Math.abs(milliToDollars(t.amount)),
+      amount: milliToDollars(t.amount),
       category: t.category_name ?? 'Uncategorized',
       date: t.date,
     }));
 }
 
-/** Get upcoming scheduled transactions in the next N days */
+/** Advance a date by the YNAB scheduled frequency */
+function advanceByFrequency(
+  date: Date,
+  frequency: ynab.ScheduledTransactionDetailFrequencyEnum,
+): void {
+  switch (frequency) {
+    case 'daily':
+      date.setDate(date.getDate() + 1);
+      break;
+    case 'weekly':
+      date.setDate(date.getDate() + 7);
+      break;
+    case 'everyOtherWeek':
+      date.setDate(date.getDate() + 14);
+      break;
+    case 'twiceAMonth':
+      if (date.getDate() < 15) {
+        date.setDate(15);
+      } else {
+        date.setDate(1);
+        date.setMonth(date.getMonth() + 1);
+      }
+      break;
+    case 'every4Weeks':
+      date.setDate(date.getDate() + 28);
+      break;
+    case 'monthly':
+      date.setMonth(date.getMonth() + 1);
+      break;
+    case 'everyOtherMonth':
+      date.setMonth(date.getMonth() + 2);
+      break;
+    case 'every3Months':
+      date.setMonth(date.getMonth() + 3);
+      break;
+    case 'every4Months':
+      date.setMonth(date.getMonth() + 4);
+      break;
+    case 'twiceAYear':
+      date.setMonth(date.getMonth() + 6);
+      break;
+    case 'yearly':
+      date.setFullYear(date.getFullYear() + 1);
+      break;
+    case 'everyOtherYear':
+      date.setFullYear(date.getFullYear() + 2);
+      break;
+    default:
+      // 'never' — no recurrence
+      break;
+  }
+}
+
+/**
+ * Get upcoming scheduled transactions, materializing recurring occurrences
+ * within the given window.
+ */
 export async function getUpcomingScheduled(days = 7): Promise<TransactionSummary[]> {
   const scheduled = await readCache<ynab.ScheduledTransactionDetail[]>('scheduled');
   if (!scheduled) return [];
 
-  const today = new Date(todayISO() + 'T00:00:00');
-  const cutoff = new Date(today);
+  const todayStr = todayISO();
+  const cutoff = new Date(todayStr + 'T00:00:00');
   cutoff.setDate(cutoff.getDate() + days);
   const cutoffStr = cutoff.toISOString().slice(0, 10);
-  const todayStr = todayISO();
 
-  return scheduled
-    .filter((t) => t.date_next >= todayStr && t.date_next <= cutoffStr)
-    .map((t) => ({
+  const results: TransactionSummary[] = [];
+
+  for (const t of scheduled) {
+    const amount = milliToDollars(t.amount);
+    const base = {
       payee: t.payee_name ?? 'Unknown',
-      amount: Math.abs(milliToDollars(t.amount)),
+      amount,
       category: t.category_name ?? 'Uncategorized',
-      date: t.date_next,
-    }));
+    };
+
+    // Start from date_next
+    const d = new Date(t.date_next + 'T00:00:00');
+
+    // Skip past dates before today
+    while (d.toISOString().slice(0, 10) < todayStr && t.frequency !== 'never') {
+      advanceByFrequency(d, t.frequency);
+    }
+
+    // Materialize occurrences within the window
+    if (t.frequency === 'never') {
+      const dateStr = t.date_next;
+      if (dateStr >= todayStr && dateStr <= cutoffStr) {
+        results.push({ ...base, date: dateStr });
+      }
+    } else {
+      let dateStr = d.toISOString().slice(0, 10);
+      while (dateStr <= cutoffStr) {
+        if (dateStr >= todayStr) {
+          results.push({ ...base, date: dateStr });
+        }
+        advanceByFrequency(d, t.frequency);
+        dateStr = d.toISOString().slice(0, 10);
+      }
+    }
+  }
+
+  results.sort((a, b) => a.date.localeCompare(b.date));
+  return results;
 }

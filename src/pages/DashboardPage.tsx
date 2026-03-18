@@ -1,16 +1,27 @@
 import { useBudget } from '@/hooks/useBudget';
-import { getCategoryTiers } from '@/services/ynab';
+import type { TransactionSummary } from '@/types/budget';
+import { getCategoryTiers, getPlanId } from '@/services/ynab';
 import { formatCurrency, todayISO, cn } from '@/lib/utils';
 import { BudgetGate } from '@/components/BudgetGate';
 import { CategoryBreakdown } from '@/components/CategoryBreakdown';
-import { OverspendWarning } from '@/components/OverspendWarning';
-import { RefreshCw, TrendingDown, Calendar, ArrowRight, Settings } from 'lucide-react';
+import { CashflowChart } from '@/components/CashflowChart';
+import {
+  RefreshCw,
+  TrendingDown,
+  ArrowRight,
+  ExternalLink,
+  Settings,
+  CalendarClock,
+  ChevronDown,
+} from 'lucide-react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 const NUDGE_DISMISSED_KEY = 'cys-tier-nudge-dismissed';
+const SCHEDULED_NUDGE_DISMISSED_KEY = 'cys-scheduled-nudge-dismissed';
 
 export function DashboardPage() {
-  const { connected, syncing, budget, todayTransactions, upcomingBills, refresh, error } =
+  const { connected, syncing, budget, recentTransactions, upcomingBills, refresh, error } =
     useBudget();
   const today = new Date(todayISO() + 'T00:00:00');
   const hour = new Date().getHours();
@@ -18,6 +29,8 @@ export function DashboardPage() {
 
   const hasTiers = Object.keys(getCategoryTiers()).length > 0;
   const nudgeDismissed = localStorage.getItem(NUDGE_DISMISSED_KEY) === 'true';
+  const scheduledNudgeDismissed = localStorage.getItem(SCHEDULED_NUDGE_DISMISSED_KEY) === 'true';
+  const planId = getPlanId() ?? '';
 
   if (!connected) {
     return (
@@ -41,14 +54,24 @@ export function DashboardPage() {
             })}
           </p>
         </div>
-        <button
-          onClick={refresh}
-          disabled={syncing}
-          className="text-muted-foreground hover:bg-accent hover:text-foreground rounded-lg p-2 transition-colors disabled:opacity-50"
-          aria-label="Refresh from YNAB"
-        >
-          <RefreshCw className={cn('h-4 w-4', syncing && 'animate-spin')} />
-        </button>
+        <div className="flex items-center gap-1">
+          <a
+            href={`https://app.ynab.com/${planId}/budget`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-muted-foreground hover:bg-accent hover:text-foreground inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs transition-colors"
+          >
+            YNAB <ExternalLink className="h-3 w-3" />
+          </a>
+          <button
+            onClick={refresh}
+            disabled={syncing}
+            className="text-muted-foreground hover:bg-accent hover:text-foreground rounded-lg p-2 transition-colors disabled:opacity-50"
+            aria-label="Refresh from YNAB"
+          >
+            <RefreshCw className={cn('h-4 w-4', syncing && 'animate-spin')} />
+          </button>
+        </div>
       </header>
 
       {error && (
@@ -79,118 +102,154 @@ export function DashboardPage() {
         </div>
       )}
 
+      {/* Scheduled transactions nudge */}
+      {!scheduledNudgeDismissed && budget && upcomingBills.length === 0 && (
+        <div className="border-border bg-card flex items-center justify-between rounded-lg border px-4 py-3">
+          <div className="flex items-center gap-2">
+            <CalendarClock className="text-muted-foreground h-4 w-4 shrink-0" />
+            <p className="text-muted-foreground text-sm">
+              <a
+                href={`https://app.ynab.com/${planId}/accounts`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                Set up scheduled transactions
+              </a>{' '}
+              in YNAB so the coach can see upcoming bills.{' '}
+              <a
+                href="https://support.ynab.com/en_us/scheduled-transactions-a-guide-BygrAIFA9"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-muted-foreground hover:text-foreground underline underline-offset-2"
+              >
+                How?
+              </a>
+            </p>
+          </div>
+          <button
+            onClick={() => localStorage.setItem(SCHEDULED_NUDGE_DISMISSED_KEY, 'true')}
+            className="text-muted-foreground hover:text-foreground ml-2 text-xs"
+            aria-label="Dismiss"
+          >
+            &times;
+          </button>
+        </div>
+      )}
+
       {budget && (
         <>
           {budget.gate?.blocked ? (
             <BudgetGate gate={budget.gate} />
           ) : (
             <>
-              {/* The Number */}
-              <section className="border-border bg-card rounded-2xl border p-6 text-center">
-                <p className="text-muted-foreground text-sm font-medium">You can spend today</p>
-                <p
-                  className={cn(
-                    'mt-1 text-5xl font-bold tracking-tight',
-                    budget.remainingToday < 0
-                      ? 'text-destructive'
-                      : budget.dailyAmount < 20
-                        ? 'text-warning'
-                        : 'text-primary',
-                  )}
-                >
-                  {formatCurrency(budget.remainingToday)}
-                </p>
-                <p className="text-muted-foreground mt-2 text-xs">
-                  {formatCurrency(budget.dailyAmount)}/day · {budget.daysRemaining} days left this
-                  month
-                </p>
-              </section>
-
-              {/* Overspend warning */}
-              {budget.overspendWarnings && budget.overspendWarnings.length > 0 && (
-                <OverspendWarning warnings={budget.overspendWarnings} />
+              {/* Recent transactions — collapsed by default */}
+              {recentTransactions.length > 0 && (
+                <RecentTransactions transactions={recentTransactions} />
               )}
 
               {/* Category breakdown */}
               {budget.flexibleBreakdown && (
-                <CategoryBreakdown categories={budget.flexibleBreakdown} />
+                <CategoryBreakdown
+                  categories={budget.flexibleBreakdown}
+                  daysRemaining={budget.daysRemaining}
+                />
               )}
-
-              {/* Quick stats */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="border-border bg-card rounded-xl border p-4">
-                  <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
-                    <TrendingDown className="h-3.5 w-3.5" />
-                    Spent today
-                  </div>
-                  <p className="mt-1 text-lg font-semibold">{formatCurrency(budget.spentToday)}</p>
-                </div>
-                <div className="border-border bg-card rounded-xl border p-4">
-                  <div className="text-muted-foreground flex items-center gap-1.5 text-xs">
-                    <Calendar className="h-3.5 w-3.5" />
-                    {budget.daysRemaining} days left
-                  </div>
-                  <p className="mt-1 text-lg font-semibold">
-                    {formatCurrency(budget.totalAvailable)}
-                  </p>
-                  <p className="text-muted-foreground text-xs">available</p>
-                </div>
-              </div>
             </>
           )}
         </>
       )}
 
-      {/* Today's transactions */}
-      {todayTransactions.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-muted-foreground text-sm font-medium">Today</h2>
-          <div className="space-y-1">
-            {todayTransactions.map((t, i) => (
-              <div
-                key={i}
-                className="border-border bg-card flex items-center justify-between rounded-lg border px-4 py-3"
-              >
-                <div>
-                  <p className="text-sm font-medium">{t.payee}</p>
-                  <p className="text-muted-foreground text-xs">{t.category}</p>
-                </div>
-                <p className="text-sm font-semibold">{formatCurrency(t.amount)}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+      {/* Projected cashflow */}
+      {budget && <CashflowChart budget={budget} />}
 
-      {/* Upcoming bills */}
-      {upcomingBills.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-muted-foreground text-sm font-medium">Coming up</h2>
-          <div className="space-y-1">
-            {upcomingBills.slice(0, 3).map((b, i) => (
-              <div
-                key={i}
-                className="border-border bg-card flex items-center justify-between rounded-lg border px-4 py-3"
-              >
-                <div>
-                  <p className="text-sm font-medium">{b.payee}</p>
-                  <p className="text-muted-foreground text-xs">{b.date}</p>
-                </div>
-                <p className="text-sm font-semibold">{formatCurrency(b.amount)}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Phase 2: Coaching */}
-      <section className="border-primary/30 bg-primary/5 rounded-2xl border border-dashed p-5">
-        <p className="text-primary text-sm font-medium">Coaching</p>
-        <p className="text-muted-foreground mt-1 text-sm">
-          Personalized budget insights will appear here in Phase 2.
-        </p>
-      </section>
+      {/* Upcoming bills — collapsible */}
+      {upcomingBills.length > 0 && <ScheduledTransactions bills={upcomingBills} />}
     </div>
+  );
+}
+
+function RecentTransactions({ transactions }: { transactions: TransactionSummary[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const total = transactions.reduce((sum, t) => sum + t.amount, 0);
+
+  return (
+    <section className="space-y-2">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="text-muted-foreground flex w-full items-center gap-1.5 text-sm font-medium"
+      >
+        <TrendingDown className="h-3.5 w-3.5" />
+        Recent transactions
+        <span className="ml-auto flex items-center gap-1.5">
+          <SignedAmount amount={total} />
+          <ChevronDown className={cn('h-4 w-4 transition-transform', expanded && 'rotate-180')} />
+        </span>
+      </button>
+      {expanded && (
+        <div className="space-y-1">
+          {transactions.map((t, i) => (
+            <div
+              key={i}
+              className="border-border bg-card flex items-center justify-between rounded-lg border px-4 py-3"
+            >
+              <div>
+                <p className="text-sm font-medium">{t.payee}</p>
+                <p className="text-muted-foreground text-xs">{t.category}</p>
+              </div>
+              <SignedAmount amount={t.amount} />
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function SignedAmount({ amount }: { amount: number }) {
+  const positive = amount > 0;
+  return (
+    <span className={cn('text-sm font-semibold', positive ? 'text-primary' : '')}>
+      {positive ? '+' : ''}
+      {formatCurrency(amount)}
+    </span>
+  );
+}
+
+function ScheduledTransactions({ bills }: { bills: TransactionSummary[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const total = bills.reduce((sum, b) => sum + b.amount, 0);
+
+  return (
+    <section className="space-y-2">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="text-muted-foreground flex w-full items-center gap-1.5 text-sm font-medium"
+      >
+        <CalendarClock className="h-3.5 w-3.5" />
+        Scheduled ({bills.length})
+        <span className="ml-auto flex items-center gap-1.5">
+          <SignedAmount amount={total} />
+          <ChevronDown className={cn('h-4 w-4 transition-transform', expanded && 'rotate-180')} />
+        </span>
+      </button>
+      {expanded && (
+        <div className="space-y-1">
+          {bills.map((b, i) => (
+            <div
+              key={i}
+              className="border-border bg-card flex items-center justify-between rounded-lg border px-4 py-3"
+            >
+              <div>
+                <p className="text-sm font-medium">{b.payee}</p>
+                <p className="text-muted-foreground text-xs">{b.date}</p>
+              </div>
+              <SignedAmount amount={b.amount} />
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

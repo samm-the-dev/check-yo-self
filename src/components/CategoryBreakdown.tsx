@@ -1,21 +1,37 @@
 import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
-import { formatCurrency, cn } from '@/lib/utils';
+import { formatCurrency, todayISO, cn } from '@/lib/utils';
 import type { FlexibleCategoryDaily } from '@/types/budget';
 
-/** Warn if a single category holds this fraction of the total daily budget */
-const CONCENTRATION_THRESHOLD = 0.6;
+/** Window: 7 days back + 14 days forward = 21 days total */
+const LOOKBACK = 7;
+const LOOKAHEAD = 14;
+const WINDOW = LOOKBACK + LOOKAHEAD;
+
+/** Today marker position: 7/21 = ~33% from the left */
+const TODAY_PERCENT = (LOOKBACK / WINDOW) * 100;
 
 interface CategoryBreakdownProps {
   categories: FlexibleCategoryDaily[];
+  daysRemaining: number;
 }
 
-export function CategoryBreakdown({ categories }: CategoryBreakdownProps) {
-  const [expanded, setExpanded] = useState(false);
+function coverageDays(balance: number, spentThisWeek: number, daysRemaining: number): number {
+  if (balance <= 0 || spentThisWeek <= 0) return daysRemaining;
+  const dailyRate = spentThisWeek / 7;
+  return Math.min(Math.floor(balance / dailyRate), daysRemaining);
+}
+
+function formatCoverDate(daysCovered: number): string {
+  const d = new Date(todayISO() + 'T00:00:00');
+  d.setDate(d.getDate() + daysCovered);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+export function CategoryBreakdown({ categories, daysRemaining }: CategoryBreakdownProps) {
+  const [expanded, setExpanded] = useState(true);
 
   if (categories.length === 0) return null;
-
-  const concentrated = categories.find((c) => c.percentOfTotal >= CONCENTRATION_THRESHOLD);
 
   return (
     <section className="border-border bg-card overflow-hidden rounded-2xl border">
@@ -35,44 +51,74 @@ export function CategoryBreakdown({ categories }: CategoryBreakdownProps) {
       {expanded && (
         <div className="border-border space-y-1 border-t px-4 pt-2 pb-3">
           {categories.map((cat) => {
-            const usedPercent =
-              cat.dailyAmount > 0
-                ? Math.min(1, cat.spentToday / cat.dailyAmount)
-                : cat.spentToday > 0
-                  ? 1
-                  : 0;
+            const overspent = cat.balance <= 0;
+
+            // How many days from today the balance covers at current pace
+            const daysCovered = coverageDays(cat.balance, cat.spentThisWeek, daysRemaining);
+            const coversFullMonth = daysCovered >= daysRemaining;
+
+            // Fill extends from left edge to coverage point on the 21-day timeline
+            // Coverage of N days from today = (LOOKBACK + N) / WINDOW
+            const coverFill = Math.min(1, (LOOKBACK + daysCovered) / WINDOW);
+
+            // Is the coverage point past the today marker?
+            const aheadOfToday = coverFill > TODAY_PERCENT / 100;
 
             return (
               <div key={`${cat.groupName}-${cat.name}`} className="py-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">{cat.name}</span>
-                  <span className="text-muted-foreground text-xs">
-                    {formatCurrency(cat.spentToday)} / {formatCurrency(cat.dailyAmount)}
-                  </span>
-                </div>
-                <div className="bg-muted mt-1 h-1.5 overflow-hidden rounded-full">
+                <span className="text-sm">{cat.name}</span>
+                <div className="relative mt-1 h-1.5 overflow-hidden rounded-full">
+                  {/* Track — full-width gradient at low opacity */}
                   <div
-                    className={cn(
-                      'h-full rounded-full transition-all',
-                      usedPercent >= 0.9
-                        ? 'bg-destructive'
-                        : usedPercent >= 0.7
-                          ? 'bg-warning'
-                          : 'bg-primary',
-                    )}
-                    style={{ width: `${usedPercent * 100}%` }}
+                    className="absolute inset-0 rounded-full"
+                    style={{
+                      background: `linear-gradient(to right, hsl(152 60% 50%), hsl(38 92% 50%) ${TODAY_PERCENT}%, hsl(0 65% 50%))`,
+                      opacity: 0.2,
+                    }}
+                  />
+                  {/* Fill — clips the same full-width gradient at full opacity */}
+                  {overspent ? (
+                    <div
+                      className="absolute inset-0 rounded-full"
+                      style={{ background: 'hsl(0 65% 50%)' }}
+                    />
+                  ) : (
+                    <div
+                      className="absolute inset-y-0 left-0 overflow-hidden rounded-full transition-all"
+                      style={{ width: `${coverFill * 100}%` }}
+                    >
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${100 / coverFill}%`,
+                          background: `linear-gradient(to right, hsl(152 60% 50%), hsl(38 92% 50%) ${TODAY_PERCENT}%, hsl(0 65% 50%))`,
+                        }}
+                      />
+                    </div>
+                  )}
+                  {/* Today marker */}
+                  <div
+                    className="bg-foreground/60 absolute top-[-1px] bottom-[-1px] w-[2px] rounded-full"
+                    style={{ left: `${TODAY_PERCENT}%` }}
                   />
                 </div>
+                {overspent ? (
+                  <p className="text-destructive mt-1 text-xs">
+                    Overspent — consider rebalancing in YNAB
+                  </p>
+                ) : cat.spentThisWeek > cat.weeklyAmount ? (
+                  <p className="text-muted-foreground mt-1 text-xs">
+                    Should cover through {formatCoverDate(daysCovered)}
+                  </p>
+                ) : (
+                  <p className="text-muted-foreground mt-1 text-xs">
+                    Can spend {formatCurrency((cat.weeklyAmount - cat.spentThisWeek) / 7)} today and
+                    stay on pace
+                  </p>
+                )}
               </div>
             );
           })}
-
-          {concentrated && (
-            <p className="text-warning mt-2 text-xs">
-              Most of your daily budget is in {concentrated.name} — consider spreading across
-              categories.
-            </p>
-          )}
         </div>
       )}
     </section>

@@ -4,7 +4,7 @@ import { db } from '@/db';
 import {
   syncYnabData,
   getDailyBudgetSnapshot,
-  getTodayTransactions,
+  getRecentTransactions,
   getUpcomingScheduled,
   getYnabToken,
   getPlanId,
@@ -19,9 +19,9 @@ interface BudgetState {
   syncing: boolean;
   /** The daily budget snapshot (null if not yet loaded) */
   budget: DailyBudgetSnapshot | null;
-  /** Today's transactions */
-  todayTransactions: TransactionSummary[];
-  /** Bills coming in the next 7 days */
+  /** Recent transactions (last 7 days) */
+  recentTransactions: TransactionSummary[];
+  /** Scheduled bills in the next 14 days */
   upcomingBills: TransactionSummary[];
   /** Force a refresh from YNAB */
   refresh: () => Promise<void>;
@@ -33,7 +33,7 @@ export function useBudget(): BudgetState {
   const connected = !!getYnabToken() && !!getPlanId();
   const [syncing, setSyncing] = useState(false);
   const [budget, setBudget] = useState<DailyBudgetSnapshot | null>(null);
-  const [todayTransactions, setTodayTransactions] = useState<TransactionSummary[]>([]);
+  const [recentTransactions, setRecentTransactions] = useState<TransactionSummary[]>([]);
   const [upcomingBills, setUpcomingBills] = useState<TransactionSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,11 +45,11 @@ export function useBudget(): BudgetState {
     const hasTiers = Object.keys(tiers).length > 0;
     const [snap, txns, bills] = await Promise.all([
       getDailyBudgetSnapshot(hasTiers ? tiers : undefined),
-      getTodayTransactions(),
-      getUpcomingScheduled(7),
+      getRecentTransactions(7),
+      getUpcomingScheduled(14),
     ]);
     setBudget(snap);
-    setTodayTransactions(txns);
+    setRecentTransactions(txns);
     setUpcomingBills(bills);
   }, []);
 
@@ -87,5 +87,5 @@ export function useBudget(): BudgetState {
     }
   }, [connected]);
 
-  return { connected, syncing, budget, todayTransactions, upcomingBills, refresh, error };
+  return { connected, syncing, budget, recentTransactions, upcomingBills, refresh, error };
 }
