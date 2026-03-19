@@ -438,7 +438,7 @@ export async function getUpcomingScheduled(days = 7): Promise<TransactionSummary
     const d = new Date(t.date_next + 'T00:00:00');
 
     while (d.toISOString().slice(0, 10) < todayStr && t.frequency !== 'never') {
-      advanceByYnabFrequency(d, t.frequency);
+      if (!advanceByYnabFrequency(d, t.frequency)) break;
     }
 
     if (t.frequency === 'never') {
@@ -452,7 +452,7 @@ export async function getUpcomingScheduled(days = 7): Promise<TransactionSummary
         if (dateStr >= todayStr) {
           results.push({ ...base, date: dateStr });
         }
-        advanceByYnabFrequency(d, t.frequency);
+        if (!advanceByYnabFrequency(d, t.frequency)) break;
         dateStr = d.toISOString().slice(0, 10);
       }
     }

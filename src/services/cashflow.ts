@@ -78,10 +78,10 @@ export async function getCashflowSnapshot(
       };
       allTransactions.push(input);
 
-      const onChecking = checkingAccountIds.has(t.account_id);
-      const transfersToChecking =
-        t.transfer_account_id != null && checkingAccountIds.has(t.transfer_account_id);
-      if (onChecking || transfersToChecking) {
+      // Only include transactions owned by a checking account for past-balance
+      // reconstruction. Transfer counterparts on non-checking accounts are
+      // excluded to avoid double-counting (YNAB records both sides).
+      if (checkingAccountIds.has(t.account_id)) {
         checkingTransactions.push(input);
       }
     }
