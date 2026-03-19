@@ -7,15 +7,12 @@ import { DashboardPage } from '@/pages/DashboardPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { getYnabToken, getPlanId, extractTokenFromHash, setOnUnauthorized } from '@/services/ynab';
 
+// Extract OAuth token from the URL hash before React mounts.
+// Runs once at module load — no StrictMode double-invoke, no effect needed.
+extractTokenFromHash();
+
 export default function App() {
   const [ready, setReady] = useState(() => !!getYnabToken() && !!getPlanId());
-
-  // Extract OAuth token from URL hash on mount (in useEffect to avoid
-  // side-effects during render, which StrictMode may invoke twice).
-  useEffect(() => {
-    const token = extractTokenFromHash();
-    if (token) setReady(true);
-  }, []);
 
   // Register 401 handler so the app returns to login when token is revoked/expired
   useEffect(() => {
