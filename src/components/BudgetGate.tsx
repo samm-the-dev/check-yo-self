@@ -29,7 +29,7 @@ export function BudgetGate({ gate }: BudgetGateProps) {
               <p className="text-muted-foreground text-xs">{cat.groupName}</p>
             </div>
             <span className="text-warning text-xs font-medium">
-              Needs {formatCurrency(cat.shortfall)}
+              {cat.shortfall > 0 ? <>Needs {formatCurrency(cat.shortfall)}</> : 'Needs budgeting'}
             </span>
           </li>
         ))}
