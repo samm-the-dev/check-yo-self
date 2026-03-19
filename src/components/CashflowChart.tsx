@@ -191,7 +191,7 @@ export function CashflowChart({ budget }: CashflowChartProps) {
               x={todayISO()}
               stroke="currentColor"
               strokeDasharray="3 3"
-              strokeOpacity={0.3}
+              strokeOpacity={0.5}
               label={{
                 value: 'Today',
                 position: 'top',
@@ -247,7 +247,7 @@ export function CashflowChart({ budget }: CashflowChartProps) {
               type="monotone"
               dataKey="checkingBalance"
               stroke="hsl(152 60% 50%)"
-              strokeWidth={2}
+              strokeWidth={2.5}
               dot={<EventDot />}
               activeDot={{ r: 5, fill: 'hsl(152 60% 50%)', strokeWidth: 0 }}
             />
@@ -308,10 +308,6 @@ function CashflowMethodologyContent({
         <strong>Why two lines?</strong> The committed line shows what's certain. The projected line
         layers in your real spending pace over the last two weeks — it adapts as your habits change,
         giving you a best-guess trajectory.
-      </p>
-      <p>
-        <strong>Month boundary:</strong> The spending rate stays constant past month-end. If your
-        habits change next month, the projection won't reflect that yet.
       </p>
       <p>
         <strong>Accuracy depends on YNAB setup.</strong> Mark recurring bills and income as

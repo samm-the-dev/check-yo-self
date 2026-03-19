@@ -66,8 +66,8 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
           </p>
           <p>
             <strong>On pace</strong> means your spending rate matches your budget — the bar reaches
-            today. Past today means you've spent ahead (covered more days). Short of today means
-            you're underspending relative to budget.
+            today. Past today means you've spent ahead (covered more days). Short of today means you
+            have room to spend and stay on track.
           </p>
           <p>
             <strong>Goal-based categories</strong> use your YNAB weekly or monthly spending goal as
@@ -89,7 +89,7 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
       <div className="space-y-1">
         {categories.map((cat) => {
           const coverageDays = computeCoverageDays(cat.balance, cat.spentInWindow, cat.dailyAmount);
-          const overspent = cat.balance < 0;
+          const overspent = cat.balance < 0 || (cat.balance === 0 && cat.spentInWindow > 0);
           // coverageDays = days of the 28-day window consumed by spending.
           // 0 = no spending, 14 = on pace (today marker), 15–28 = overspending.
           const coverFill = overspent ? 1 : coverageDays / WINDOW;
@@ -99,7 +99,7 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
                 <span className="text-sm">{cat.name}</span>
                 <span className="text-muted-foreground text-xs tabular-nums">{paceLabel(cat)}</span>
               </div>
-              <div className="relative mt-1 h-1.5 overflow-hidden rounded-full">
+              <div className="relative mt-1.5 h-1.5 rounded-full">
                 {/* Track — full-width gradient at low opacity */}
                 <div
                   className="absolute inset-0 rounded-full"
@@ -128,11 +128,28 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
                     />
                   </div>
                 ) : null}
-                {/* Today marker */}
+                {/* Today marker — triangle above + line through */}
                 <div
-                  className="bg-foreground/60 absolute top-[-1px] bottom-[-1px] w-[2px] rounded-full"
-                  style={{ left: `${TODAY_PERCENT}%` }}
-                />
+                  className="absolute top-0 bottom-0"
+                  style={{ left: `${TODAY_PERCENT}%`, transform: 'translateX(-50%)' }}
+                >
+                  <div
+                    className="absolute bottom-full"
+                    style={{
+                      width: 0,
+                      height: 0,
+                      borderLeft: '4px solid transparent',
+                      borderRight: '4px solid transparent',
+                      borderTop: '5px solid currentColor',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                    }}
+                  />
+                  <div
+                    className="bg-foreground/70 absolute inset-y-0 w-[1.5px]"
+                    style={{ left: '50%', transform: 'translateX(-50%)' }}
+                  />
+                </div>
               </div>
               {(() => {
                 // Budget vs target warning: is this month's budget enough to sustain the goal?

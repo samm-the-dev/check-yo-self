@@ -41,9 +41,9 @@ export interface FlexibleCategoryDaily {
   percentOfTotal: number;
 }
 
-/** Computed daily budget — derived from YNAB category balances */
+/** Computed daily budget — derived from YNAB category balances and spending goals */
 export interface DailyBudgetSnapshot {
-  /** Total available across all spending categories */
+  /** Total spending envelope: goal-derived for targeted categories, balance for others */
   totalAvailable: number;
   /** Rolling lookahead horizon (days) */
   daysRemaining: number;

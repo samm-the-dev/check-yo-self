@@ -3,7 +3,9 @@
  *
  * Mental model:
  * - YNAB owns all category balances. CYS never does its own budgeting math.
- * - totalAvailable = sum of flexible category balances > 0 (necessity excluded).
+ * - totalAvailable = sum of flexible category spending envelopes (necessity excluded).
+ *   Categories with a YNAB weekly/monthly spending goal contribute their goal-derived
+ *   envelope; categories without a goal contribute their positive balance.
  * - dailyAmount = totalAvailable / LOOKAHEAD_DAYS (rolling horizon, month-agnostic).
  *   Used as the budget guardrail on the dashboard and for per-category pace.
  * - windowAmount = dailyAmount * LOOKBACK_DAYS (same rate, expressed per-window).
@@ -97,9 +99,9 @@ export interface CashflowEntry {
   date: string;
   label: string;
   amount: number;
-  /** Committed balance: checking minus accumulated spending velocity drawdown */
+  /** Projected balance: checking minus accumulated spending velocity drawdown */
   balance: number;
-  /** Cash-in-bank balance: only moves on scheduled events that directly hit checking */
+  /** Committed balance: only moves on hitsChecking scheduled events (no daily drawdown) */
   checkingBalance: number;
   type: 'income' | 'bill';
   dayEvents?: { label: string; amount: number; type: 'income' | 'bill' }[];
@@ -118,9 +120,10 @@ export function computeDailyAmount(totalAvailable: number): number {
  * Sum of all flexible category spending envelopes.
  *
  * Categories with a weekly target contribute `(weeklyTarget / 7) * LOOKAHEAD_DAYS`
- * so that `computeDailyAmount(totalAvailable)` equals the sum of per-category daily
- * amounts. Categories without a target contribute their positive balance.
- * Negative balances and necessity categories are excluded.
+ * regardless of current balance, so that `computeDailyAmount(totalAvailable)` equals
+ * the sum of per-category daily amounts. Categories without a target contribute
+ * their positive balance (negative balances excluded). Necessity categories are
+ * always excluded.
  */
 export function computeTotalAvailable(categories: CategoryInput[]): number {
   let total = 0;
@@ -407,20 +410,21 @@ export function materializeFutureEvents(
  * Build a cashflow projection: past actuals + today anchor + future drawdown.
  *
  * Produces two balance series per day:
- * - `balance` (committed): subtracts projectedDailySpend + all scheduled events.
- *   projectedDailySpend reflects actual spending velocity (14-day rolling avg
- *   of flex outflows), so the committed line shows where the user is heading
- *   based on real behavior rather than budget targets.
- * - `checkingBalance` (cash-in-bank): only moves on scheduled events where
- *   `hitsChecking` is true — transactions that will concretely move money
- *   in/out of checking (direct debits, income, account transfers).
+ * - `checkingBalance` (committed): only moves on hitsChecking scheduled events —
+ *   transactions that will concretely move money in/out of checking (direct debits,
+ *   income, account transfers). No daily drawdown.
+ * - `balance` (projected): subtracts projectedDailySpend each day + hitsChecking
+ *   scheduled events. projectedDailySpend reflects actual spending velocity
+ *   (14-day rolling avg of flex outflows), so the projected line shows where
+ *   the user is heading based on real behavior rather than budget targets.
+ *
+ * Both lines exclude non-hitsChecking events (e.g., CC-billed charges) since
+ * those manifest as CC payment transfers when they actually hit checking.
  *
  * Past days: both lines are identical (transactions already cleared).
  * Today: both lines anchor at checkingBalance.
  * Future days: lines diverge as daily flex spending accumulates on the
- * committed line while checking only moves on discrete scheduled events.
- *
- * projectedDailySpend continues past month-end as a best estimate of ongoing spending.
+ * projected line while committed only moves on discrete scheduled events.
  */
 export function buildCashflowProjection(params: CashflowParams): CashflowEntry[] {
   const {
