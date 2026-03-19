@@ -14,6 +14,20 @@ export interface CashflowSnapshot {
   projection: CashflowEvent[];
 }
 
+/** Re-export from budget-math — single source of truth for this type */
+export type { CashflowEventSource } from '@/lib/budget-math';
+
+import type { CashflowEventSource } from '@/lib/budget-math';
+
+/** A discrete event (bill/paycheck) on a given day */
+export interface CashflowDayEvent {
+  label: string;
+  amount: number;
+  type: 'income' | 'bill';
+  /** Origin: 'scheduled' = non-goal event (actual or scheduled), 'goal' = TBD goal target date */
+  source: CashflowEventSource;
+}
+
 /** A single point in the cashflow timeline (one per day) */
 export interface CashflowEvent {
   date: string;
@@ -25,5 +39,5 @@ export interface CashflowEvent {
   checkingBalance: number;
   type: 'income' | 'bill';
   /** Discrete events (bills/paychecks) on this day, if any */
-  dayEvents?: { label: string; amount: number; type: 'income' | 'bill' }[];
+  dayEvents?: CashflowDayEvent[];
 }

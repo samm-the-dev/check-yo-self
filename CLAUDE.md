@@ -43,7 +43,7 @@ Daily budgeting PWA for a single user (Anthony). Standalone app on `apps.samm-th
 
 ### Phases
 
-- **Phase 1 (live):** YNAB OAuth, daily budget from category balances, category tiers (necessity/flexible), flexible breakdown with weekly pace, overspend detection with move-money recommendations, cashflow chart with 14-day lookback + 14-day lookahead, scheduled transaction materialization.
+- **Phase 1 (live):** YNAB OAuth, daily budget from category balances, goal-derived category classification (NEED Refill → flexible, NEED Set Aside → necessity) with per-category overrides, flexible breakdown with weekly pace, overspend detection with move-money recommendations, cashflow chart with 14-day lookback + 14-day lookahead, scheduled transaction materialization, TBD goal synthetic cashflow events.
 - **Phase 2 (parked on `feature/coaching`):** AI coaching — spending pattern detection, morning/evening check-in ritual, personalized budget insights.
 - **Phase 3 (planned):** Spending trends, streak tracking, polish.
   - TODO: Optional "show credit balance" toggle on cashflow chart — opt in to offset the committed line by outstanding CC balance. Off by default (chart focuses on checking cashflow, not debt position). Useful for users who want visibility into how CC debt affects effective cash.

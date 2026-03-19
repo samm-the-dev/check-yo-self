@@ -15,6 +15,7 @@ import {
   buildCashflowProjection,
   advanceByYnabFrequency,
   materializeFutureEvents,
+  deriveTierFromGoal,
   LOOKAHEAD_DAYS,
   type CategoryInput,
   type ScheduledTransactionInput,
@@ -62,6 +63,41 @@ function makeScheduled(
     ...overrides,
   };
 }
+
+// ---------------------------------------------------------------------------
+// deriveTierFromGoal
+// ---------------------------------------------------------------------------
+
+describe('deriveTierFromGoal', () => {
+  it('NEED + Refill (false) → flexible', () => {
+    expect(deriveTierFromGoal({ goalType: 'NEED', goalNeedsWholeAmount: false })).toBe('flexible');
+  });
+
+  it('NEED + Refill (null) → flexible (null treated as Refill)', () => {
+    expect(deriveTierFromGoal({ goalType: 'NEED', goalNeedsWholeAmount: null })).toBe('flexible');
+  });
+
+  it('NEED + Set Aside (true) → necessity', () => {
+    expect(deriveTierFromGoal({ goalType: 'NEED', goalNeedsWholeAmount: true })).toBe('necessity');
+  });
+
+  // Note: snoozed goals keep their derived tier — deriveTierFromGoal is snooze-agnostic.
+  // The necessity gate (in ynab.ts) handles snoozed categories separately.
+
+  it.each(['TB', 'TBD', 'MF', 'DEBT'])('%s goal type → undefined', (goalType) => {
+    expect(deriveTierFromGoal({ goalType, goalNeedsWholeAmount: null })).toBeUndefined();
+  });
+
+  it('no goal (null) → undefined', () => {
+    expect(deriveTierFromGoal({ goalType: null, goalNeedsWholeAmount: null })).toBeUndefined();
+  });
+
+  it('no goal (undefined) → undefined', () => {
+    expect(
+      deriveTierFromGoal({ goalType: undefined, goalNeedsWholeAmount: undefined }),
+    ).toBeUndefined();
+  });
+});
 
 // ---------------------------------------------------------------------------
 // dailyAmount
