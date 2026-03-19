@@ -14,19 +14,30 @@ import { todayISO } from '@/lib/utils';
 const TOKEN_KEY = 'cys-ynab-token';
 const PLAN_KEY = 'cys-ynab-plan-id';
 const TIERS_KEY = 'cys-category-tiers';
+const STATE_KEY = 'cys-oauth-state';
 
 // ---------------------------------------------------------------------------
 // OAuth helpers (Implicit Grant)
 // ---------------------------------------------------------------------------
 
-/** Read the YNAB OAuth Client ID from env */
+/** Read the YNAB OAuth Client ID from env — throws if missing */
 function getYnabClientId(): string {
-  return import.meta.env.VITE_YNAB_CLIENT_ID ?? '';
+  const id = import.meta.env.VITE_YNAB_CLIENT_ID;
+  if (!id) throw new Error('VITE_YNAB_CLIENT_ID is not set — cannot build OAuth URL');
+  return id;
 }
 
 /** Build the redirect URI for the current environment */
 function getRedirectUri(): string {
   return window.location.origin + import.meta.env.BASE_URL;
+}
+
+/** Generate a cryptographic random state value and store it for CSRF validation */
+function generateOAuthState(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  const state = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  sessionStorage.setItem(STATE_KEY, state);
+  return state;
 }
 
 /** Build the YNAB OAuth authorize URL (Implicit Grant) */
@@ -36,13 +47,15 @@ export function buildAuthUrl(): string {
     redirect_uri: getRedirectUri(),
     response_type: 'token',
     scope: 'read-only',
+    state: generateOAuthState(),
   });
   return `https://app.ynab.com/oauth/authorize?${params.toString()}`;
 }
 
 /**
  * Check the URL hash for an OAuth access_token (redirect callback).
- * If found, store it in localStorage and clear the hash.
+ * Validates the state parameter to prevent CSRF attacks.
+ * If valid, stores the token in localStorage and clears the hash.
  * Returns the token string if extracted, null otherwise.
  */
 export function extractTokenFromHash(): string | null {
@@ -50,6 +63,18 @@ export function extractTokenFromHash(): string | null {
   if (!hash.includes('access_token')) return null;
 
   const params = new URLSearchParams(hash.replace(/^#/, ''));
+
+  // Validate state parameter to prevent CSRF / login-injection attacks
+  const returnedState = params.get('state');
+  const expectedState = sessionStorage.getItem(STATE_KEY);
+  sessionStorage.removeItem(STATE_KEY);
+
+  if (!returnedState || returnedState !== expectedState) {
+    // State mismatch — reject the token and clean up
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+    return null;
+  }
+
   const token = params.get('access_token');
   if (!token) return null;
 

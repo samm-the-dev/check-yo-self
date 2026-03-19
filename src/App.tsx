@@ -8,11 +8,14 @@ import { SettingsPage } from '@/pages/SettingsPage';
 import { getYnabToken, getPlanId, extractTokenFromHash, setOnUnauthorized } from '@/services/ynab';
 
 export default function App() {
-  // Check for OAuth callback token in the URL hash before first render
-  const [ready, setReady] = useState(() => {
-    extractTokenFromHash();
-    return !!getYnabToken() && !!getPlanId();
-  });
+  const [ready, setReady] = useState(() => !!getYnabToken() && !!getPlanId());
+
+  // Extract OAuth token from URL hash on mount (in useEffect to avoid
+  // side-effects during render, which StrictMode may invoke twice).
+  useEffect(() => {
+    const token = extractTokenFromHash();
+    if (token) setReady(true);
+  }, []);
 
   // Register 401 handler so the app returns to login when token is revoked/expired
   useEffect(() => {
