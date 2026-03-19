@@ -5,14 +5,17 @@
  * - YNAB owns all category balances. CYS never does its own budgeting math.
  * - totalAvailable = sum of flexible category balances > 0 (necessity excluded).
  * - dailyAmount = totalAvailable / daysRemaining (including today).
+ *   Used as the budget guardrail on the dashboard and for per-category pace.
  * - weeklyAmount = dailyAmount * 7 (same rate, just expressed per-week).
+ * - spendingVelocity = 14-day rolling average of actual flex outflows.
+ *   Used for the cashflow committed-line drawdown (descriptive, not prescriptive).
  * - Cashflow projection anchors on today's checking balance. Past days are
- *   reconstructed from actual transactions. Future days subtract dailyAmount
+ *   reconstructed from actual transactions. Future days subtract spendingVelocity
  *   (flex spend only) and apply scheduled transactions (income +, bills −).
  * - CC payment transfers are included in cashflow — they represent real checking
  *   outflows even though YNAB models them as inter-account transfers.
- * - The 14-day lookahead may cross a month boundary; dailyAmount continues past
- *   month-end as a best-guess estimate of ongoing spending.
+ * - The 14-day lookahead may cross a month boundary; the spending velocity
+ *   continues past month-end as a best-guess estimate of ongoing spending.
  *
  * All functions are pure — no React, no Dexie, no YNAB SDK. Numbers in, numbers out.
  */
@@ -70,7 +73,7 @@ export interface CashflowEntry {
   date: string;
   label: string;
   amount: number;
-  /** Committed balance: checking minus accumulated daily flex drawdown */
+  /** Committed balance: checking minus accumulated spending velocity drawdown */
   balance: number;
   /** Cash-in-bank balance: only moves on scheduled events that directly hit checking */
   checkingBalance: number;
@@ -173,6 +176,43 @@ export function computeFlexibleBreakdown(
 }
 
 // ---------------------------------------------------------------------------
+// Spending velocity
+// ---------------------------------------------------------------------------
+
+/** Default lookback window for spending velocity (days) */
+const VELOCITY_LOOKBACK = 14;
+
+/**
+ * Compute average daily spending velocity from recent flexible-category outflows.
+ *
+ * Returns the average daily spend over the lookback window (always >= 0).
+ * Returns 0 when no qualifying transactions exist — caller should fall back
+ * to budget-derived dailyAmount in that case.
+ */
+export function computeSpendingVelocity(
+  transactions: TransactionInput[],
+  flexibleCategoryNames: Set<string>,
+  today: string,
+  lookbackDays: number = VELOCITY_LOOKBACK,
+): number {
+  const windowStart = new Date(today + 'T00:00:00');
+  windowStart.setDate(windowStart.getDate() - lookbackDays);
+  const windowStartStr = windowStart.toISOString().slice(0, 10);
+
+  let totalSpent = 0;
+  for (const txn of transactions) {
+    if (txn.amount >= 0) continue; // skip inflows
+    if (!flexibleCategoryNames.has(txn.categoryName)) continue;
+    // Window: windowStartStr < date <= today (exclusive start, inclusive end)
+    if (txn.date > windowStartStr && txn.date <= today) {
+      totalSpent += Math.abs(txn.amount);
+    }
+  }
+
+  return lookbackDays > 0 ? totalSpent / lookbackDays : 0;
+}
+
+// ---------------------------------------------------------------------------
 // Pace / overspend
 // ---------------------------------------------------------------------------
 
@@ -264,7 +304,10 @@ export function advanceByYnabFrequency(date: Date, frequency: string): void {
 
 interface CashflowParams {
   checkingBalance: number;
-  dailyAmount: number;
+  /** Daily flex spending used for the committed-balance drawdown.
+   *  Typically spending velocity (14-day rolling avg of actual outflows),
+   *  falling back to budget-derived dailyAmount when no data exists. */
+  projectedDailySpend: number;
   today: string; // YYYY-MM-DD
   lookbackDays: number;
   lookaheadDays: number;
@@ -278,9 +321,10 @@ type DayEvent = { label: string; amount: number; type: 'income' | 'bill'; hitsCh
  * Build a cashflow projection: past actuals + today anchor + future drawdown.
  *
  * Produces two balance series per day:
- * - `balance` (committed): subtracts dailyAmount + all scheduled events.
- *   dailyAmount represents budgetary intent — it's subject to change and
- *   its impact on checking is deferred (timing depends on payment method).
+ * - `balance` (committed): subtracts projectedDailySpend + all scheduled events.
+ *   projectedDailySpend reflects actual spending velocity (14-day rolling avg
+ *   of flex outflows), so the committed line shows where the user is heading
+ *   based on real behavior rather than budget targets.
  * - `checkingBalance` (cash-in-bank): only moves on scheduled events where
  *   `hitsChecking` is true — transactions that will concretely move money
  *   in/out of checking (direct debits, income, account transfers).
@@ -290,12 +334,12 @@ type DayEvent = { label: string; amount: number; type: 'income' | 'bill'; hitsCh
  * Future days: lines diverge as daily flex spending accumulates on the
  * committed line while checking only moves on discrete scheduled events.
  *
- * dailyAmount continues past month-end as a best estimate of ongoing spending.
+ * projectedDailySpend continues past month-end as a best estimate of ongoing spending.
  */
 export function buildCashflowProjection(params: CashflowParams): CashflowEntry[] {
   const {
     checkingBalance,
-    dailyAmount,
+    projectedDailySpend,
     today,
     lookbackDays,
     lookaheadDays,
@@ -418,7 +462,7 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
     dayEvents: todayEvents,
   });
 
-  // FUTURE: balance = dailyAmount drawdown + all scheduled events (committed view)
+  // FUTURE: balance = projectedDailySpend drawdown + all scheduled events (committed view)
   //         checkingBalance = only hitsChecking events (no daily drawdown,
   //         no non-checking-account charges)
   let futureBalance = checkingBalance;
@@ -429,7 +473,7 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
   while (fd.toISOString().slice(0, 10) <= horizonStr) {
     const dateStr = fd.toISOString().slice(0, 10);
 
-    futureBalance -= dailyAmount;
+    futureBalance -= projectedDailySpend;
 
     const events = futureByDate.get(dateStr);
     if (events) {
@@ -444,7 +488,7 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
     projection.push({
       date: dateStr,
       label: dateStr,
-      amount: -dailyAmount,
+      amount: -projectedDailySpend,
       balance: futureBalance,
       checkingBalance: futureCheckingBalance,
       type: 'bill',

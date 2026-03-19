@@ -5,6 +5,7 @@ import type { CashflowSnapshot } from '@/types/cashflow';
 import type { DailyBudgetSnapshot } from '@/types/budget';
 import {
   buildCashflowProjection,
+  computeSpendingVelocity,
   type TransactionInput,
   type ScheduledTransactionInput,
 } from '@/lib/budget-math';
@@ -104,12 +105,18 @@ export async function getCashflowSnapshot(
     }
   }
 
+  // Compute spending velocity from actual flex outflows (14-day rolling avg).
+  // Falls back to budget-derived dailyAmount when no transaction data exists.
+  const flexNames = new Set(budget?.flexibleBreakdown?.map((c) => c.name) ?? []);
+  const velocity = computeSpendingVelocity(transactions, flexNames, today);
+  const projectedDailySpend = velocity > 0 ? velocity : (budget?.dailyAmount ?? 0);
+
   // Delegate projection to budget-math
   let projection: CashflowSnapshot['projection'] = [];
   if (checkingBalance !== null) {
     projection = buildCashflowProjection({
       checkingBalance,
-      dailyAmount: budget?.dailyAmount ?? 0,
+      projectedDailySpend,
       today,
       lookbackDays: LOOKBACK_DAYS,
       lookaheadDays: LOOKAHEAD_DAYS,

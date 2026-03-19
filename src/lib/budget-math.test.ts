@@ -11,6 +11,7 @@ import {
   computeDailyAmount,
   computeTotalAvailable,
   computeFlexibleBreakdown,
+  computeSpendingVelocity,
   computePaceOverspend,
   computeCoverageDays,
   buildCashflowProjection,
@@ -251,6 +252,85 @@ describe('computeCoverageDays', () => {
 });
 
 // ---------------------------------------------------------------------------
+// spendingVelocity
+// ---------------------------------------------------------------------------
+
+describe('computeSpendingVelocity', () => {
+  const flexNames = new Set(['Groceries', 'Dining Out', 'Fun']);
+
+  it('computes average daily spend from flex outflows over 14 days', () => {
+    const txns: TransactionInput[] = [
+      makeTransaction({ date: '2026-03-18', amount: -70, categoryName: 'Groceries' }),
+      makeTransaction({ date: '2026-03-11', amount: -70, categoryName: 'Groceries' }),
+      makeTransaction({ date: '2026-03-15', amount: -28, categoryName: 'Dining Out' }),
+    ];
+    // Total: 168 over 14 days = 12/day
+    const result = computeSpendingVelocity(txns, flexNames, '2026-03-19');
+    expect(result).toBeCloseTo(12);
+  });
+
+  it('excludes non-flexible categories', () => {
+    const txns: TransactionInput[] = [
+      makeTransaction({ date: '2026-03-18', amount: -50, categoryName: 'Groceries' }),
+      makeTransaction({ date: '2026-03-18', amount: -200, categoryName: 'Rent' }),
+    ];
+    // Only Groceries counts: 50 / 14
+    const result = computeSpendingVelocity(txns, flexNames, '2026-03-19');
+    expect(result).toBeCloseTo(50 / 14);
+  });
+
+  it('ignores inflows (positive amounts)', () => {
+    const txns: TransactionInput[] = [
+      makeTransaction({ date: '2026-03-18', amount: -50, categoryName: 'Groceries' }),
+      makeTransaction({ date: '2026-03-18', amount: 30, categoryName: 'Groceries' }), // refund
+    ];
+    const result = computeSpendingVelocity(txns, flexNames, '2026-03-19');
+    expect(result).toBeCloseTo(50 / 14);
+  });
+
+  it('excludes transactions outside the lookback window', () => {
+    const txns: TransactionInput[] = [
+      makeTransaction({ date: '2026-03-18', amount: -50, categoryName: 'Groceries' }),
+      makeTransaction({ date: '2026-03-01', amount: -100, categoryName: 'Groceries' }), // 18 days ago
+    ];
+    // Only the -50 is within 14 days of March 19
+    const result = computeSpendingVelocity(txns, flexNames, '2026-03-19');
+    expect(result).toBeCloseTo(50 / 14);
+  });
+
+  it('returns 0 when no qualifying transactions exist', () => {
+    const result = computeSpendingVelocity([], flexNames, '2026-03-19');
+    expect(result).toBe(0);
+  });
+
+  it('returns 0 when all transactions are outside the window', () => {
+    const txns: TransactionInput[] = [
+      makeTransaction({ date: '2026-02-01', amount: -50, categoryName: 'Groceries' }),
+    ];
+    const result = computeSpendingVelocity(txns, flexNames, '2026-03-19');
+    expect(result).toBe(0);
+  });
+
+  it('includes transactions on the boundary (today) but excludes windowStart', () => {
+    const txns: TransactionInput[] = [
+      makeTransaction({ date: '2026-03-19', amount: -14, categoryName: 'Fun' }), // today: included
+      makeTransaction({ date: '2026-03-05', amount: -14, categoryName: 'Fun' }), // exactly 14 days ago: excluded
+    ];
+    // Window is (Mar 5, Mar 19] — Mar 5 excluded, Mar 19 included
+    const result = computeSpendingVelocity(txns, flexNames, '2026-03-19');
+    expect(result).toBeCloseTo(14 / 14);
+  });
+
+  it('respects custom lookback window', () => {
+    const txns: TransactionInput[] = [
+      makeTransaction({ date: '2026-03-18', amount: -35, categoryName: 'Dining Out' }),
+    ];
+    const result = computeSpendingVelocity(txns, flexNames, '2026-03-19', 7);
+    expect(result).toBeCloseTo(5); // 35 / 7
+  });
+});
+
+// ---------------------------------------------------------------------------
 // advanceByYnabFrequency
 // ---------------------------------------------------------------------------
 
@@ -306,7 +386,7 @@ describe('advanceByYnabFrequency', () => {
 describe('buildCashflowProjection', () => {
   const baseParams = {
     checkingBalance: 2500,
-    dailyAmount: 40,
+    projectedDailySpend: 40,
     today: '2026-03-19',
     lookbackDays: 7,
     lookaheadDays: 14,
@@ -322,7 +402,7 @@ describe('buildCashflowProjection', () => {
     expect(todayEntry!.checkingBalance).toBe(2500);
   });
 
-  it('subtracts dailyAmount from committed balance only', () => {
+  it('subtracts projectedDailySpend from committed balance only', () => {
     const result = buildCashflowProjection(baseParams);
     const tomorrow = result.find((e) => e.date === '2026-03-20');
     expect(tomorrow).toBeDefined();
@@ -330,7 +410,7 @@ describe('buildCashflowProjection', () => {
     expect(tomorrow!.checkingBalance).toBe(2500); // no scheduled events — unchanged
   });
 
-  it('scheduled events move both lines, dailyAmount only moves committed', () => {
+  it('scheduled events move both lines, projectedDailySpend only moves committed', () => {
     const result = buildCashflowProjection({
       ...baseParams,
       scheduledTransactions: [
@@ -405,12 +485,12 @@ describe('buildCashflowProjection', () => {
     expect(mar18!.checkingBalance).toBeCloseTo(2500);
   });
 
-  it('continues dailyAmount drawdown past month boundary (committed only)', () => {
+  it('continues projectedDailySpend drawdown past month boundary (committed only)', () => {
     // March 25 + 14 = April 8. dailyAmount continues as best-guess estimate.
     const result = buildCashflowProjection({
       ...baseParams,
       today: '2026-03-25',
-      dailyAmount: 40,
+      projectedDailySpend: 40,
       lookaheadDays: 14,
     });
 
