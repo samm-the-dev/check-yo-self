@@ -259,18 +259,24 @@ function CashflowMethodology({
         <div className="text-muted-foreground mt-2 space-y-2 text-xs leading-relaxed">
           <p>
             The chart projects your <strong>checking account balance</strong> over the next 14 days.
-            Past days use actual transactions. Future days subtract your daily flexible budget and
-            apply scheduled bills and income.
+            Past days use actual transactions. Future days subtract your daily flex budget and apply
+            scheduled bills and income from YNAB.
           </p>
           <p>
-            Credit card payments are included as checking outflows (money leaves your account when
-            the payment hits). Flex spending on credit cards is also captured in the daily drawdown
-            rate, so the projection is slightly conservative mid-cycle but corrects when payments
-            land.
+            <strong>CC payments &amp; double-counting:</strong> Scheduled credit card payments are
+            included (they really do pull from checking). Flex spending on a credit card also shows
+            up in the daily drawdown rate, even though it doesn't hit checking until the CC payment
+            lands. This makes the projection pessimistic — it assumes you'll need the cash sooner
+            than you actually will. We think that's the safer default.
           </p>
           <p>
-            Past month-end, the daily rate continues as a best estimate. The projection gets more
-            accurate when next month's budget is set up in YNAB.
+            <strong>Month boundary:</strong> The daily rate stays constant past month-end. If your
+            next month's budget changes your spending mix, the projection won't reflect that yet.
+          </p>
+          <p>
+            <strong>Accuracy depends on YNAB setup.</strong> Mark recurring bills and income as
+            scheduled transactions in YNAB — that's what drives the spikes and dips in the chart.
+            Unscheduled recurring charges won't appear in the forecast.
           </p>
           {coverageIssues.length > 0 && (
             <div className="border-warning/30 bg-warning/5 rounded-md border px-3 py-2">
