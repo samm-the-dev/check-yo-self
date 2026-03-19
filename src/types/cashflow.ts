@@ -1,4 +1,4 @@
-/** Computed cashflow snapshot for coaching context */
+/** Computed cashflow snapshot */
 export interface CashflowSnapshot {
   /** Current checking balance from YNAB accounts (if available) */
   checkingBalance: number | null;

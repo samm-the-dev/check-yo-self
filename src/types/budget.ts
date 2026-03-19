@@ -45,7 +45,7 @@ export interface DailyBudgetSnapshot {
   spentToday: number;
   /** dailyAmount - spentToday */
   remainingToday: number;
-  /** Per-category breakdown for coaching context */
+  /** Per-category breakdown */
   categoryBreakdown: CategoryBalance[];
   /** Gate status — present when tiers are configured */
   gate?: NecessityGateStatus;
@@ -66,7 +66,7 @@ export interface CategoryBalance {
   activity: number;
 }
 
-/** Lightweight transaction summary for coaching context */
+/** Lightweight transaction summary */
 export interface TransactionSummary {
   payee: string;
   amount: number;
