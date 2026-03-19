@@ -189,6 +189,9 @@ export const LOOKBACK_DAYS = 14;
 /** Canonical lookahead window used across the app (days) */
 export const LOOKAHEAD_DAYS = 14;
 
+/** Weekly pace window — matches spentThisWeek data (days) */
+export const PACE_WINDOW_DAYS = 7;
+
 /**
  * Compute average daily spending velocity from recent flexible-category outflows.
  *

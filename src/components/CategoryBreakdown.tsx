@@ -4,15 +4,16 @@ import { formatCurrency, todayISO, cn } from '@/lib/utils';
 import {
   computePaceOverspend,
   computeCoverageDays,
-  LOOKBACK_DAYS,
+  PACE_WINDOW_DAYS,
   LOOKAHEAD_DAYS,
 } from '@/lib/budget-math';
 import type { FlexibleCategoryDaily } from '@/types/budget';
 
-const WINDOW = LOOKBACK_DAYS + LOOKAHEAD_DAYS;
+/** Timeline: 7-day lookback + 14-day lookahead = 21-day window */
+const WINDOW = PACE_WINDOW_DAYS + LOOKAHEAD_DAYS;
 
 /** Today marker position as percentage from the left */
-const TODAY_PERCENT = (LOOKBACK_DAYS / WINDOW) * 100;
+const TODAY_PERCENT = (PACE_WINDOW_DAYS / WINDOW) * 100;
 
 interface CategoryBreakdownProps {
   categories: FlexibleCategoryDaily[];
@@ -53,8 +54,8 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
             const daysConsumed =
               dailyBudget > 0 && cat.spentThisWeek > 0 ? cat.spentThisWeek / dailyBudget : 0;
             const overspent = cat.balance < 0 || daysConsumed >= WINDOW;
-            // Fill maps consumed days onto the 21-day timeline:
-            // 0 days = empty, LOOKBACK_DAYS = at today marker, WINDOW = full
+            // Fill maps consumed days onto the timeline:
+            // 0 days = empty, PACE_WINDOW_DAYS = at today marker, WINDOW = full
             const coverFill = overspent ? 1 : daysConsumed / WINDOW;
 
             return (
@@ -101,7 +102,7 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
                       const paceOverspend = computePaceOverspend(
                         cat.spentThisWeek,
                         dailyBudget,
-                        LOOKBACK_DAYS,
+                        PACE_WINDOW_DAYS,
                       );
                       // Use pace-based overspend when available, fall back to balance deficit
                       const overspendAmt =
@@ -141,7 +142,7 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
                       </a>
                     )}
                   </div>
-                ) : daysConsumed > LOOKBACK_DAYS ? (
+                ) : daysConsumed > PACE_WINDOW_DAYS ? (
                   <p className="text-muted-foreground mt-1 text-xs">
                     Should cover through{' '}
                     {formatCoverDate(
