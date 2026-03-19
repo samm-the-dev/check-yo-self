@@ -13,7 +13,7 @@ import {
 import { milliToDollars } from '@/services/ynab';
 
 /** Days of history to show before today */
-const LOOKBACK_DAYS = 7;
+const LOOKBACK_DAYS = 14;
 /** Days of projection to show after today */
 const LOOKAHEAD_DAYS = 14;
 
