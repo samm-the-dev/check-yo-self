@@ -45,8 +45,11 @@ export function SettingsPage() {
   });
 
   const handleDisconnect = async () => {
-    await logout();
-    window.location.reload();
+    try {
+      await logout();
+    } finally {
+      window.location.reload();
+    }
   };
 
   const handleTierChange = (categoryId: string, tier: CategoryTier | 'excluded') => {
@@ -116,7 +119,6 @@ export function SettingsPage() {
             </button>
           </div>
         )}
-
       </section>
 
       {/* Category Tiers */}

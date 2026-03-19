@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useLayoutEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { Layout } from '@/components/Layout';
@@ -14,8 +14,9 @@ extractTokenFromHash();
 export default function App() {
   const [ready, setReady] = useState(() => !!getYnabToken() && !!getPlanId());
 
-  // Register 401 handler so the app returns to login when token is revoked/expired
-  useEffect(() => {
+  // Register 401 handler before child effects run (useLayoutEffect fires
+  // before useEffect, so the handler is in place before any sync attempt).
+  useLayoutEffect(() => {
     setOnUnauthorized(() => setReady(false));
   }, []);
 

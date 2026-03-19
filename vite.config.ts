@@ -14,7 +14,9 @@ const THEME_COLOR = '#0f172a';
 
 // https://vite.dev/config/
 export default defineConfig(({ command }) => {
-  const ghpBuild = command === 'build';
+  // Only apply GitHub Pages base paths when explicitly deploying to GHP.
+  // Other build targets (local preview, future platforms) use root paths.
+  const ghpBuild = command === 'build' && process.env.DEPLOY_TARGET === 'ghp';
   return {
     plugins: [
       react(),
