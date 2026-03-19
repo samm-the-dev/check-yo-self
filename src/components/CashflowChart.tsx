@@ -280,16 +280,15 @@ function CashflowMethodology({
         <div className="text-muted-foreground mt-2 space-y-2 text-xs leading-relaxed">
           <p>
             The chart shows two lines. The <strong>solid line</strong> is your checking account
-            balance — it only moves on transactions that directly hit checking (direct debits,
-            income, CC payments). Charges on credit card accounts don't appear here until the CC
-            payment clears. The <strong>dashed line</strong> shows your committed balance after
-            accounting for daily flex spending and all scheduled charges regardless of account.
+            balance — it only moves on scheduled transactions that directly hit checking (direct
+            debits, income, account transfers). The <strong>dashed line</strong> subtracts your
+            daily flex budget on top of that, showing what's effectively spoken for.
           </p>
           <p>
-            <strong>Why two lines?</strong> Most flex spending goes on a credit card but doesn't
-            leave checking until the CC payment lands. The solid line shows what's actually in the
-            bank; the dashed line shows what's effectively spoken for. They converge around CC
-            payment dates.
+            <strong>Why two lines?</strong> Your daily flex budget is an estimate — it can change,
+            and its impact on checking is deferred depending on how you pay. Scheduled transactions
+            are more concrete. The solid line shows confirmed cashflow; the dashed line layers in
+            budgetary intent.
           </p>
           <p>
             <strong>Month boundary:</strong> The daily rate stays constant past month-end. If your

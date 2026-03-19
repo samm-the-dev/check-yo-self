@@ -83,9 +83,8 @@ export async function getCashflowSnapshot(
   }
 
   // Convert scheduled transactions to budget-math inputs
-  // hitsChecking: true if the transaction is on a checking account, or if it's
-  // income (always lands in checking). CC-account charges don't hit checking
-  // until the CC payment transfer clears.
+  // hitsChecking: true if the transaction is on a checking account or is income.
+  // Non-checking-account charges only affect the committed balance line.
   const scheduledTransactions: ScheduledTransactionInput[] = [];
   const scheduledCached = await db.cache.get('scheduled');
   if (scheduledCached) {

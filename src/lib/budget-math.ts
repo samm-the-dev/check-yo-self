@@ -50,7 +50,7 @@ export interface ScheduledTransactionInput {
   /** Non-null for account transfers (e.g., CC payments) */
   transferAccountId: string | null;
   /** True if this transaction directly impacts the checking account balance.
-   *  Transactions on CC accounts only hit the committed line, not checking. */
+   *  Non-checking-account transactions only affect the committed line. */
   hitsChecking: boolean;
 }
 
@@ -70,9 +70,9 @@ export interface CashflowEntry {
   date: string;
   label: string;
   amount: number;
-  /** Committed balance: checking minus accumulated daily drawdown */
+  /** Committed balance: checking minus accumulated daily flex drawdown */
   balance: number;
-  /** Cash-in-bank balance: only moves on discrete events (bills, income, CC payments) */
+  /** Cash-in-bank balance: only moves on scheduled events that directly hit checking */
   checkingBalance: number;
   type: 'income' | 'bill';
   dayEvents?: { label: string; amount: number; type: 'income' | 'bill' }[];
@@ -279,15 +279,15 @@ type DayEvent = { label: string; amount: number; type: 'income' | 'bill'; hitsCh
  *
  * Produces two balance series per day:
  * - `balance` (committed): subtracts dailyAmount + all scheduled events.
- *   Represents what's effectively available after accounting for flex spending.
- * - `checkingBalance` (cash-in-bank): only moves on events where
- *   `hitsChecking` is true — transactions that directly impact checking
- *   (bills from checking, CC payments, income). CC-account charges don't
- *   hit this line until the CC payment clears.
+ *   dailyAmount represents budgetary intent — it's subject to change and
+ *   its impact on checking is deferred (timing depends on payment method).
+ * - `checkingBalance` (cash-in-bank): only moves on scheduled events where
+ *   `hitsChecking` is true — transactions that will concretely move money
+ *   in/out of checking (direct debits, income, account transfers).
  *
  * Past days: both lines are identical (transactions already cleared).
- * Future days: lines diverge as daily flex spend accumulates on the committed
- * line while checking only moves on discrete events.
+ * Future days: lines diverge as daily flex spending accumulates on the
+ * committed line while checking only moves on discrete scheduled events.
  *
  * dailyAmount continues past month-end as a best estimate of ongoing spending.
  */
@@ -418,8 +418,8 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
   });
 
   // FUTURE: balance = dailyAmount drawdown + all scheduled events (committed view)
-  //         checkingBalance = only events that directly hit checking (no daily drawdown,
-  //         no CC-account charges — those only land when the CC payment clears)
+  //         checkingBalance = only hitsChecking events (no daily drawdown,
+  //         no non-checking-account charges)
   let futureBalance = checkingBalance;
   let futureCheckingBalance = checkingBalance;
   const fd = new Date(today + 'T00:00:00');
