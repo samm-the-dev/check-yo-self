@@ -57,6 +57,7 @@ function makeScheduled(
     payeeName: 'Electric Co',
     categoryName: 'Utilities',
     transferAccountId: null,
+    hitsChecking: true,
     ...overrides,
   };
 }
@@ -420,6 +421,76 @@ describe('buildCashflowProjection', () => {
     expect(apr1).toBeDefined();
     expect(apr1!.balance).toBeCloseTo(2500 - 40 * 7);
     expect(apr1!.checkingBalance).toBe(2500);
+  });
+
+  it('CC-account charges only move committed line, not checking', () => {
+    const result = buildCashflowProjection({
+      ...baseParams,
+      scheduledTransactions: [
+        // Subscription billed to credit card — doesn't hit checking directly
+        makeScheduled({
+          dateNext: '2026-03-22',
+          amount: -50,
+          frequency: 'monthly',
+          payeeName: 'Netflix',
+          hitsChecking: false,
+        }),
+      ],
+    });
+
+    // March 22: committed = 2500 - 40*3 - 50 = 2330
+    //           checking  = 2500 (CC charge doesn't touch checking)
+    const mar22 = result.find((e) => e.date === '2026-03-22');
+    expect(mar22).toBeDefined();
+    expect(mar22!.balance).toBeCloseTo(2330);
+    expect(mar22!.checkingBalance).toBe(2500);
+  });
+
+  it('mixes hitsChecking and CC-only events correctly', () => {
+    const result = buildCashflowProjection({
+      ...baseParams,
+      scheduledTransactions: [
+        // Direct debit from checking
+        makeScheduled({
+          dateNext: '2026-03-22',
+          amount: -200,
+          frequency: 'never',
+          payeeName: 'Rent',
+          hitsChecking: true,
+        }),
+        // CC charge — only committed
+        makeScheduled({
+          dateNext: '2026-03-22',
+          amount: -50,
+          frequency: 'never',
+          payeeName: 'Streaming',
+          hitsChecking: false,
+        }),
+        // CC payment transfer — hits checking
+        makeScheduled({
+          dateNext: '2026-03-25',
+          amount: -500,
+          frequency: 'never',
+          payeeName: 'Transfer: Credit Card',
+          transferAccountId: 'cc-account-123',
+          hitsChecking: true,
+        }),
+      ],
+    });
+
+    // March 22: committed = 2500 - 40*3 - 200 - 50 = 2130
+    //           checking  = 2500 - 200 = 2300 (only rent hits checking)
+    const mar22 = result.find((e) => e.date === '2026-03-22');
+    expect(mar22).toBeDefined();
+    expect(mar22!.balance).toBeCloseTo(2130);
+    expect(mar22!.checkingBalance).toBeCloseTo(2300);
+
+    // March 25: committed = 2130 - 40*3 - 500 = 1510
+    //           checking  = 2300 - 500 = 1800 (CC payment hits checking)
+    const mar25 = result.find((e) => e.date === '2026-03-25');
+    expect(mar25).toBeDefined();
+    expect(mar25!.balance).toBeCloseTo(1510);
+    expect(mar25!.checkingBalance).toBeCloseTo(1800);
   });
 
   it('materializes recurring scheduled transactions across the window', () => {

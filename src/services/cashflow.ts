@@ -30,14 +30,24 @@ export async function getCashflowSnapshot(
 
   // --- Read from cache ---
 
-  // Checking balance
+  // Accounts — used for checking balance and to classify scheduled transactions
   let checkingBalance: number | null = null;
+  const accountTypeById = new Map<string, string>();
+  const checkingAccountIds = new Set<string>();
   const accountsCached = await db.cache.get('accounts');
   if (accountsCached) {
     const accounts = JSON.parse(accountsCached.data) as ynab.Account[];
+    for (const a of accounts) {
+      if (!a.closed && !a.deleted) {
+        accountTypeById.set(a.id, a.type);
+      }
+    }
     const checkingAccounts = accounts.filter(
       (a) => a.type === 'checking' && !a.closed && !a.deleted,
     );
+    for (const a of checkingAccounts) {
+      checkingAccountIds.add(a.id);
+    }
     if (checkingAccounts.length > 0) {
       checkingBalance = checkingAccounts.reduce((sum, a) => sum + milliToDollars(a.balance), 0);
     }
@@ -73,11 +83,16 @@ export async function getCashflowSnapshot(
   }
 
   // Convert scheduled transactions to budget-math inputs
+  // hitsChecking: true if the transaction is on a checking account, or if it's
+  // income (always lands in checking). CC-account charges don't hit checking
+  // until the CC payment transfer clears.
   const scheduledTransactions: ScheduledTransactionInput[] = [];
   const scheduledCached = await db.cache.get('scheduled');
   if (scheduledCached) {
     const scheduled = JSON.parse(scheduledCached.data) as ynab.ScheduledTransactionDetail[];
     for (const t of scheduled) {
+      const onChecking = checkingAccountIds.has(t.account_id);
+      const isIncome = t.amount > 0;
       scheduledTransactions.push({
         dateNext: t.date_next,
         amount: milliToDollars(t.amount),
@@ -85,6 +100,7 @@ export async function getCashflowSnapshot(
         payeeName: t.payee_name ?? 'Unknown',
         categoryName: t.category_name ?? 'Uncategorized',
         transferAccountId: t.transfer_account_id ?? null,
+        hitsChecking: onChecking || isIncome,
       });
     }
   }
