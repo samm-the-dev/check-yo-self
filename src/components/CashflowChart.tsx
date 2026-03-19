@@ -122,7 +122,7 @@ export function CashflowChart({ budget }: CashflowChartProps) {
         hasRecurringIncome={snapshot?.hasRecurringIncome ?? false}
       />
       <div
-        className="border-border bg-card text-muted-foreground borderpx-3 rounded-xl [&_.recharts-surface]:!outline-none [&_.recharts-wrapper]:!outline-none"
+        className="border-border bg-card text-muted-foreground rounded-xl border px-3 [&_.recharts-surface]:!outline-none [&_.recharts-wrapper]:!outline-none"
         onFocus={(e) => e.target.blur()}
       >
         <ResponsiveContainer width="100%" height={180}>

@@ -1,9 +1,8 @@
 /**
- * budget-math.test.ts — Design spec for budget-math.ts
+ * budget-math.test.ts — Contract tests for the canonical math module.
  *
- * These tests describe the intended behavior of the pure math functions
- * that power Check Yo Self. The module under test doesn't exist yet;
- * these tests define the contract.
+ * These tests define the expected behavior of the pure functions in
+ * budget-math.ts that power Check Yo Self's budget and cashflow math.
  */
 import { describe, it, expect } from 'vitest';
 import {

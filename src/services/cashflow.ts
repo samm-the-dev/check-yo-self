@@ -33,16 +33,10 @@ export async function getCashflowSnapshot(
 
   // Accounts — used for checking balance and to classify scheduled transactions
   let checkingBalance: number | null = null;
-  const accountTypeById = new Map<string, string>();
   const checkingAccountIds = new Set<string>();
   const accountsCached = await db.cache.get('accounts');
   if (accountsCached) {
     const accounts = JSON.parse(accountsCached.data) as ynab.Account[];
-    for (const a of accounts) {
-      if (!a.closed && !a.deleted) {
-        accountTypeById.set(a.id, a.type);
-      }
-    }
     const checkingAccounts = accounts.filter(
       (a) => a.type === 'checking' && !a.closed && !a.deleted,
     );
@@ -84,7 +78,7 @@ export async function getCashflowSnapshot(
   }
 
   // Convert scheduled transactions to budget-math inputs
-  // hitsChecking: true if the transaction is on a checking account or is income.
+  // hitsChecking: true if the transaction is on a checking account or transfers to one.
   // Non-checking-account charges only affect the committed balance line.
   const scheduledTransactions: ScheduledTransactionInput[] = [];
   const scheduledCached = await db.cache.get('scheduled');
@@ -92,7 +86,8 @@ export async function getCashflowSnapshot(
     const scheduled = JSON.parse(scheduledCached.data) as ynab.ScheduledTransactionDetail[];
     for (const t of scheduled) {
       const onChecking = checkingAccountIds.has(t.account_id);
-      const isIncome = t.amount > 0;
+      const transfersToChecking =
+        t.transfer_account_id != null && checkingAccountIds.has(t.transfer_account_id);
       scheduledTransactions.push({
         dateNext: t.date_next,
         amount: milliToDollars(t.amount),
@@ -100,7 +95,7 @@ export async function getCashflowSnapshot(
         payeeName: t.payee_name ?? 'Unknown',
         categoryName: t.category_name ?? 'Uncategorized',
         transferAccountId: t.transfer_account_id ?? null,
-        hitsChecking: onChecking || isIncome,
+        hitsChecking: onChecking || transfersToChecking,
       });
     }
   }
@@ -125,22 +120,21 @@ export async function getCashflowSnapshot(
     });
   }
 
-  // Cashflow warning: bills due before next income exceed checking
+  // Cashflow warning: checking-account bills due before next income exceed balance.
+  // Uses scheduled inputs (not projection events) so we can filter by hitsChecking.
   let cashflowWarning = false;
   if (checkingBalance !== null) {
-    // Build future events map from projection for warning check
-    const futureEvents = projection
-      .filter((e) => e.date > today && e.dayEvents)
-      .flatMap((e) => e.dayEvents!.map((ev) => ({ ...ev, date: e.date })));
-
-    const sortedDates = [...new Set(futureEvents.map((e) => e.date))].sort();
+    const futureChecking = scheduledTransactions.filter(
+      (t) => t.hitsChecking && t.dateNext > today,
+    );
+    const sortedDates = [...new Set(futureChecking.map((t) => t.dateNext))].sort();
     const nextIncomeDate = sortedDates.find((date) =>
-      futureEvents.some((e) => e.date === date && e.type === 'income'),
+      futureChecking.some((t) => t.dateNext === date && t.amount > 0),
     );
     if (nextIncomeDate) {
-      const billsBefore = futureEvents
-        .filter((e) => e.date < nextIncomeDate && e.type === 'bill')
-        .reduce((sum, e) => sum + Math.abs(e.amount), 0);
+      const billsBefore = futureChecking
+        .filter((t) => t.dateNext < nextIncomeDate && t.amount < 0)
+        .reduce((sum, t) => sum + Math.abs(t.amount), 0);
       cashflowWarning = billsBefore > checkingBalance;
     }
   }

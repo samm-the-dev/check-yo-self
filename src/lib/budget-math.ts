@@ -17,7 +17,9 @@
  * - The 14-day lookahead may cross a month boundary; the spending velocity
  *   continues past month-end as a best-guess estimate of ongoing spending.
  *
- * All functions are pure — no React, no Dexie, no YNAB SDK. Numbers in, numbers out.
+ * All exported functions are pure (deterministic, no side effects) except when
+ * callers omit optional date parameters — those fall back to the system clock
+ * via _todayISO(). No React, no Dexie, no YNAB SDK. Numbers in, numbers out.
  */
 
 // ---------------------------------------------------------------------------
