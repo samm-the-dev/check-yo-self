@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ChevronRight, Shield } from 'lucide-react';
 import { initiateLogin, getYnabToken, setPlanId, fetchPlans } from '@/services/ynab';
 
@@ -9,44 +9,42 @@ interface OnboardingProps {
 type Step = 'intro' | 'connecting' | 'select-budget';
 
 export function Onboarding({ onComplete }: OnboardingProps) {
-  const [step, setStep] = useState<Step>(() => {
-    // If we already have a token (OAuth redirect back) but no plan, go straight to connecting
-    return getYnabToken() ? 'connecting' : 'intro';
-  });
+  const hasToken = !!getYnabToken();
+  const [step, setStep] = useState<Step>(hasToken ? 'connecting' : 'intro');
   const [plans, setPlans] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fetchedRef = useRef(false);
 
   // After OAuth redirect, we have a token — fetch plans and proceed
-  const handlePostAuth = async () => {
+  useEffect(() => {
+    if (step !== 'connecting' || fetchedRef.current) return;
+    fetchedRef.current = true;
+
     setLoading(true);
     setError(null);
 
-    try {
-      const fetched = await fetchPlans();
-      if (fetched.length === 0) {
-        setError('No budgets found. Try signing in again.');
+    fetchPlans()
+      .then((fetched) => {
+        if (fetched.length === 0) {
+          setError('No budgets found. Try signing in again.');
+          return;
+        }
+        if (fetched.length === 1) {
+          setPlanId(fetched[0]!.id);
+          onComplete();
+        } else {
+          setPlans(fetched);
+          setStep('select-budget');
+        }
+      })
+      .catch(() => {
+        setError('Could not connect to YNAB. Try signing in again.');
+      })
+      .finally(() => {
         setLoading(false);
-        return;
-      }
-      if (fetched.length === 1) {
-        setPlanId(fetched[0]!.id);
-        onComplete();
-      } else {
-        setPlans(fetched);
-        setStep('select-budget');
-      }
-    } catch {
-      setError('Could not connect to YNAB. Try signing in again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // If we landed here with a token already (OAuth callback), auto-fetch plans
-  if (step === 'connecting' && !loading && !error && plans.length === 0) {
-    handlePostAuth();
-  }
+      });
+  }, [step, onComplete]);
 
   const handleSelectPlan = (id: string) => {
     setPlanId(id);

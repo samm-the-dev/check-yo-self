@@ -35,6 +35,7 @@ export function buildAuthUrl(): string {
     client_id: getYnabClientId(),
     redirect_uri: getRedirectUri(),
     response_type: 'token',
+    scope: 'read-only',
   });
   return `https://app.ynab.com/oauth/authorize?${params.toString()}`;
 }
