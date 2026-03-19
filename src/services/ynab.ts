@@ -10,10 +10,10 @@ import type {
 } from '@/types/budget';
 import { todayISO } from '@/lib/utils';
 import {
-  computeDaysRemaining,
   computeDailyAmount,
   computeTotalAvailable,
   computeFlexibleBreakdown,
+  LOOKAHEAD_DAYS,
   advanceByYnabFrequency,
   type CategoryInput,
 } from '@/lib/budget-math';
@@ -282,12 +282,11 @@ export async function getDailyBudgetSnapshot(
 ): Promise<DailyBudgetSnapshot | null> {
   const categoryGroups = await readCache<ynab.CategoryGroupWithCategories[]>('categories');
   const transactions = await readCache<ynab.TransactionDetail[]>('transactions');
+  const monthDetail = await readCache<ynab.MonthDetail>('month');
 
   if (!categoryGroups || !transactions) return null;
 
   const today = todayISO();
-  const now = new Date();
-  const daysRemaining = computeDaysRemaining(now.getFullYear(), now.getMonth(), now.getDate());
 
   const hasTiers = tiers && Object.keys(tiers).length > 0;
 
@@ -338,16 +337,17 @@ export async function getDailyBudgetSnapshot(
   const spentToday = Math.abs(todayTxns.reduce((sum, t) => sum + t.amount, 0));
   const spentTodayDollars = milliToDollars(spentToday);
 
-  const dailyAmount = computeDailyAmount(totalAvailable, daysRemaining);
+  const dailyAmount = computeDailyAmount(totalAvailable);
   const remainingToday = dailyAmount - spentTodayDollars;
 
   const snapshot: DailyBudgetSnapshot = {
     totalAvailable,
-    daysRemaining,
+    daysRemaining: LOOKAHEAD_DAYS,
     dailyAmount,
     spentToday: spentTodayDollars,
     remainingToday,
     categoryBreakdown: categories,
+    readyToAssign: monthDetail ? milliToDollars(monthDetail.to_be_budgeted) : null,
   };
 
   if (hasTiers) {
@@ -363,7 +363,6 @@ export async function getDailyBudgetSnapshot(
     snapshot.flexibleBreakdown = computeFlexibleBreakdown(
       categoryInputs,
       txnInputs,
-      daysRemaining,
       dailyAmount,
       today,
     );

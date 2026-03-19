@@ -37,7 +37,7 @@ export interface FlexibleCategoryDaily {
 export interface DailyBudgetSnapshot {
   /** Total available across all spending categories */
   totalAvailable: number;
-  /** Days remaining in the month (including today) */
+  /** Rolling lookahead horizon (days) */
   daysRemaining: number;
   /** totalAvailable / daysRemaining */
   dailyAmount: number;
@@ -47,6 +47,8 @@ export interface DailyBudgetSnapshot {
   remainingToday: number;
   /** Per-category breakdown */
   categoryBreakdown: CategoryBalance[];
+  /** YNAB Ready to Assign (dollars). Positive = unassigned funds, negative = overassigned. */
+  readyToAssign: number | null;
   /** Gate status — present when tiers are configured */
   gate?: NecessityGateStatus;
   /** Per-category daily breakdown — present when tiers are configured */

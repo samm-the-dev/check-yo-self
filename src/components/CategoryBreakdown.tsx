@@ -48,14 +48,11 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
       {expanded && (
         <div className="border-border space-y-1 border-t px-4 pt-2 pb-3">
           {categories.map((cat) => {
-            // How many days of budget the lookback window spending has consumed
-            const dailyBudget = cat.dailyAmount;
-            const daysConsumed =
-              dailyBudget > 0 && cat.spentInWindow > 0 ? cat.spentInWindow / dailyBudget : 0;
-            const overspent = cat.balance < 0 || daysConsumed >= WINDOW;
-            // Fill maps consumed days onto the timeline:
-            // 0 days = empty, LOOKBACK_DAYS = at today marker, WINDOW = full
-            const coverFill = overspent ? 1 : daysConsumed / WINDOW;
+            const coverageDays = computeCoverageDays(cat.balance, cat.spentInWindow);
+            const overspent = cat.balance < 0;
+            // coverageDays = days of the 28-day window consumed by spending.
+            // 0 = no spending, 14 = on pace (today marker), 15–28 = overspending.
+            const coverFill = overspent ? 1 : coverageDays / WINDOW;
 
             return (
               <div key={`${cat.groupName}-${cat.name}`} className="py-1.5">
@@ -100,7 +97,7 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
                     {(() => {
                       const paceOverspend = computePaceOverspend(
                         cat.spentInWindow,
-                        dailyBudget,
+                        cat.dailyAmount,
                         LOOKBACK_DAYS,
                       );
                       // Use pace-based overspend when available, fall back to balance deficit
@@ -142,12 +139,9 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
                       </a>
                     )}
                   </div>
-                ) : daysConsumed > LOOKBACK_DAYS ? (
+                ) : coverageDays > LOOKBACK_DAYS ? (
                   <p className="text-muted-foreground mt-1 text-xs">
-                    Should cover through{' '}
-                    {formatCoverDate(
-                      computeCoverageDays(cat.balance, cat.spentInWindow, LOOKAHEAD_DAYS),
-                    )}
+                    Should cover through {formatCoverDate(Math.floor(coverageDays - LOOKBACK_DAYS))}
                   </p>
                 ) : (
                   <p className="text-muted-foreground mt-1 text-xs">

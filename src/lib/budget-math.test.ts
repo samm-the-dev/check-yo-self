@@ -6,7 +6,6 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  computeDaysRemaining,
   computeDailyAmount,
   computeTotalAvailable,
   computeFlexibleBreakdown,
@@ -16,6 +15,7 @@ import {
   buildCashflowProjection,
   advanceByYnabFrequency,
   materializeFutureEvents,
+  LOOKAHEAD_DAYS,
   type CategoryInput,
   type ScheduledTransactionInput,
   type TransactionInput,
@@ -64,55 +64,21 @@ function makeScheduled(
 }
 
 // ---------------------------------------------------------------------------
-// daysRemaining
-// ---------------------------------------------------------------------------
-
-describe('computeDaysRemaining', () => {
-  it('returns days remaining including today', () => {
-    // March 19 → 31 - 19 + 1 = 13
-    const result = computeDaysRemaining(2026, 2, 19); // 0-indexed month
-    expect(result).toBe(13);
-  });
-
-  it('returns 1 on the last day of the month', () => {
-    // March 31 → 31 - 31 + 1 = 1
-    const result = computeDaysRemaining(2026, 2, 31);
-    expect(result).toBe(1);
-  });
-
-  it('returns full month on the first day', () => {
-    // March 1 → 31 - 1 + 1 = 31
-    const result = computeDaysRemaining(2026, 2, 1);
-    expect(result).toBe(31);
-  });
-
-  it('handles February correctly', () => {
-    // Feb 2026 has 28 days. Feb 15 → 28 - 15 + 1 = 14
-    const result = computeDaysRemaining(2026, 1, 15);
-    expect(result).toBe(14);
-  });
-
-  it('never returns less than 1', () => {
-    const result = computeDaysRemaining(2026, 2, 31);
-    expect(result).toBeGreaterThanOrEqual(1);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // dailyAmount
 // ---------------------------------------------------------------------------
 
 describe('computeDailyAmount', () => {
-  it('divides total available by days remaining', () => {
-    expect(computeDailyAmount(130, 13)).toBeCloseTo(10);
-  });
-
-  it('returns full balance on last day of month', () => {
-    expect(computeDailyAmount(500, 1)).toBe(500);
+  it('divides total available by LOOKAHEAD_DAYS', () => {
+    expect(computeDailyAmount(140)).toBeCloseTo(10); // 140 / 14
   });
 
   it('returns 0 when total available is 0', () => {
-    expect(computeDailyAmount(0, 15)).toBe(0);
+    expect(computeDailyAmount(0)).toBe(0);
+  });
+
+  it('is month-agnostic (same result regardless of day-of-month)', () => {
+    // The whole point: no month boundary dependency
+    expect(computeDailyAmount(280)).toBeCloseTo(280 / LOOKAHEAD_DAYS);
   });
 });
 
@@ -165,12 +131,13 @@ describe('computeTotalAvailable', () => {
 // ---------------------------------------------------------------------------
 
 describe('computeFlexibleBreakdown', () => {
-  it('computes per-category daily and window amounts', () => {
-    const cats = [makeCategory({ id: '1', name: 'Groceries', balance: 260, tier: 'flexible' })];
+  it('computes per-category daily and window amounts using rolling horizon', () => {
+    const cats = [makeCategory({ id: '1', name: 'Groceries', balance: 280, tier: 'flexible' })];
     const txns: TransactionInput[] = [];
-    const result = computeFlexibleBreakdown(cats, txns, 13, 20);
+    const totalDaily = 280 / LOOKAHEAD_DAYS; // 20
+    const result = computeFlexibleBreakdown(cats, txns, totalDaily);
     expect(result).toHaveLength(1);
-    expect(result[0].dailyAmount).toBeCloseTo(20); // 260 / 13
+    expect(result[0].dailyAmount).toBeCloseTo(20); // 280 / 14
     // windowAmount should equal dailyAmount * LOOKBACK_DAYS (14)
     expect(result[0].windowAmount).toBeCloseTo(20 * 14);
   });
@@ -184,13 +151,13 @@ describe('computeFlexibleBreakdown', () => {
       // Outside 14-day window (> 14 days ago from March 19)
       makeTransaction({ date: '2026-03-04', amount: -50, categoryName: 'Dining Out' }),
     ];
-    const result = computeFlexibleBreakdown(cats, txns, 13, 20, '2026-03-19');
+    const result = computeFlexibleBreakdown(cats, txns, 20, '2026-03-19');
     expect(result[0].spentInWindow).toBeCloseTo(70); // 15 + 25 + 30
   });
 
   it('windowAmount is consistent with dailyAmount (dailyAmount * LOOKBACK_DAYS)', () => {
     const cats = [makeCategory({ id: '1', name: 'Fun', balance: 140, tier: 'flexible' })];
-    const result = computeFlexibleBreakdown(cats, [], 14, 10);
+    const result = computeFlexibleBreakdown(cats, [], 10);
     const daily = result[0].dailyAmount;
     const window = result[0].windowAmount;
     expect(window).toBeCloseTo(daily * 14);
@@ -198,7 +165,7 @@ describe('computeFlexibleBreakdown', () => {
 
   it('includes negative-balance flexible categories in breakdown but not in total', () => {
     const cats = [makeCategory({ id: '1', name: 'Overspent', balance: -20, tier: 'flexible' })];
-    const result = computeFlexibleBreakdown(cats, [], 13, 20);
+    const result = computeFlexibleBreakdown(cats, [], 20);
     expect(result).toHaveLength(1);
     expect(result[0].balance).toBe(-20);
   });
@@ -231,25 +198,27 @@ describe('computePaceOverspend', () => {
 // ---------------------------------------------------------------------------
 
 describe('computeCoverageDays', () => {
-  it('estimates days a balance will last at current spend rate', () => {
-    // balance=100, spentInWindow=70 → dailyRate=70/14=5 → coverage=20 → capped at 14
-    expect(computeCoverageDays(100, 70)).toBe(14);
-    // balance=50, spentInWindow=70 → dailyRate=5 → coverage=10
-    expect(computeCoverageDays(50, 70)).toBe(10);
+  it('returns days covered based on spending vs daily budget', () => {
+    // balance=100, spentInWindow=70 → dailyBudget=100/14≈7.14 → consumed=70/7.14≈9.8
+    // Underspent: bar left of today
+    expect(computeCoverageDays(100, 70)).toBeCloseTo(9.8, 1);
+    // balance=50, spentInWindow=70 → dailyBudget=50/14≈3.57 → consumed=70/3.57≈19.6
+    // Ahead of pace: bar past today, spending covers future days
+    expect(computeCoverageDays(50, 70)).toBeCloseTo(19.6, 1);
   });
 
-  it('caps at LOOKAHEAD_DAYS (14) when balance outlasts the window', () => {
-    const result = computeCoverageDays(1000, 14);
-    expect(result).toBe(14);
+  it('returns LOOKBACK_DAYS when spending exactly matches pace', () => {
+    // balance=140, spentInWindow=140 → dailyBudget=10 → consumed=14
+    expect(computeCoverageDays(140, 140)).toBeCloseTo(14);
   });
 
-  it('returns LOOKAHEAD_DAYS when balance is 0 or negative', () => {
-    expect(computeCoverageDays(0, 50)).toBe(14);
-    expect(computeCoverageDays(-10, 50)).toBe(14);
+  it('caps at full window (28) when balance is 0 or negative', () => {
+    expect(computeCoverageDays(0, 50)).toBe(28);
+    expect(computeCoverageDays(-10, 50)).toBe(28);
   });
 
-  it('returns LOOKAHEAD_DAYS when no spending in window', () => {
-    expect(computeCoverageDays(100, 0)).toBe(14);
+  it('returns 0 when no spending in window', () => {
+    expect(computeCoverageDays(100, 0)).toBe(0);
   });
 });
 
@@ -563,7 +532,7 @@ describe('buildCashflowProjection', () => {
     expect(apr1!.checkingBalance).toBe(2500);
   });
 
-  it('CC-account charges only move committed line, not checking', () => {
+  it('CC-account charges move neither line (they manifest via CC payment transfers)', () => {
     const result = buildCashflowProjection({
       ...baseParams,
       scheduledTransactions: [
@@ -578,11 +547,11 @@ describe('buildCashflowProjection', () => {
       ],
     });
 
-    // March 22: committed = 2500 - 40*3 - 50 = 2330
-    //           checking  = 2500 (CC charge doesn't touch checking)
+    // March 22: projected = 2500 - 40*3 = 2380 (CC charge excluded from cashflow)
+    //           checking  = 2500 (unchanged)
     const mar22 = result.find((e) => e.date === '2026-03-22');
     expect(mar22).toBeDefined();
-    expect(mar22!.balance).toBeCloseTo(2330);
+    expect(mar22!.balance).toBeCloseTo(2380);
     expect(mar22!.checkingBalance).toBe(2500);
   });
 
@@ -618,18 +587,18 @@ describe('buildCashflowProjection', () => {
       ],
     });
 
-    // March 22: committed = 2500 - 40*3 - 200 - 50 = 2130
+    // March 22: projected = 2500 - 40*3 - 200 = 2180 (CC charge excluded)
     //           checking  = 2500 - 200 = 2300 (only rent hits checking)
     const mar22 = result.find((e) => e.date === '2026-03-22');
     expect(mar22).toBeDefined();
-    expect(mar22!.balance).toBeCloseTo(2130);
+    expect(mar22!.balance).toBeCloseTo(2180);
     expect(mar22!.checkingBalance).toBeCloseTo(2300);
 
-    // March 25: committed = 2130 - 40*3 - 500 = 1510
+    // March 25: projected = 2180 - 40*3 - 500 = 1560
     //           checking  = 2300 - 500 = 1800 (CC payment hits checking)
     const mar25 = result.find((e) => e.date === '2026-03-25');
     expect(mar25).toBeDefined();
-    expect(mar25!.balance).toBeCloseTo(1510);
+    expect(mar25!.balance).toBeCloseTo(1560);
     expect(mar25!.checkingBalance).toBeCloseTo(1800);
   });
 

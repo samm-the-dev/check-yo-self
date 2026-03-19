@@ -2,6 +2,7 @@ import { useBudget } from '@/hooks/useBudget';
 import type { TransactionSummary } from '@/types/budget';
 import { getCategoryTiers, getResolvedPlanId } from '@/services/ynab';
 import { formatCurrency, todayISO, cn } from '@/lib/utils';
+import { LOOKAHEAD_DAYS } from '@/lib/budget-math';
 import { BudgetGate } from '@/components/BudgetGate';
 import { CategoryBreakdown } from '@/components/CategoryBreakdown';
 import { CashflowChart } from '@/components/CashflowChart';
@@ -38,7 +39,9 @@ export function DashboardPage() {
     'en-US',
     { month: 'long' },
   );
-  const windowCrossesMonth = budget && budget.daysRemaining <= 14;
+  const calendarDaysLeft =
+    new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate() - today.getDate() + 1;
+  const windowCrossesMonth = budget && calendarDaysLeft <= LOOKAHEAD_DAYS;
 
   if (!connected) {
     return (
