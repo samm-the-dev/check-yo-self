@@ -123,10 +123,19 @@ export async function getCashflowSnapshot(
     }
   }
 
+  // Coverage signals for methodology display
+  const scheduledCount = scheduledTransactions.length;
+  const incomeFrequencies = new Set(['never']);
+  const hasRecurringIncome = scheduledTransactions.some(
+    (t) => t.amount > 0 && !incomeFrequencies.has(t.frequency),
+  );
+
   return {
     checkingBalance,
     totalBudgeted,
     cashflowWarning,
+    scheduledCount,
+    hasRecurringIncome,
     projection,
   };
 }

@@ -6,6 +6,10 @@ export interface CashflowSnapshot {
   totalBudgeted: number;
   /** True if checking balance won't cover bills due before next paycheck */
   cashflowWarning: boolean;
+  /** Number of scheduled transactions feeding the projection */
+  scheduledCount: number;
+  /** Whether at least one recurring income transaction exists */
+  hasRecurringIncome: boolean;
   /** Chronological projection of balance changes */
   projection: CashflowEvent[];
 }

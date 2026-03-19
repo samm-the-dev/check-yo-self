@@ -10,10 +10,10 @@ import {
   ReferenceArea,
   Area,
 } from 'recharts';
-import { TrendingUp } from 'lucide-react';
+import { TrendingUp, ChevronDown, Info } from 'lucide-react';
 import { getCashflowSnapshot } from '@/services/cashflow';
-import { formatCurrency, todayISO } from '@/lib/utils';
-import type { CashflowEvent } from '@/types/cashflow';
+import { formatCurrency, todayISO, cn } from '@/lib/utils';
+import type { CashflowEvent, CashflowSnapshot } from '@/types/cashflow';
 import type { DailyBudgetSnapshot } from '@/types/budget';
 
 interface CashflowChartProps {
@@ -66,14 +66,14 @@ function EventDot(props: { cx?: number; cy?: number; payload?: CashflowEvent }) 
 }
 
 export function CashflowChart({ budget }: CashflowChartProps) {
-  const [projection, setProjection] = useState<CashflowEvent[]>([]);
+  const [snapshot, setSnapshot] = useState<CashflowSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     getCashflowSnapshot(budget).then((snap) => {
       if (!cancelled) {
-        setProjection(snap.projection);
+        setSnapshot(snap);
         setLoading(false);
       }
     });
@@ -81,6 +81,8 @@ export function CashflowChart({ budget }: CashflowChartProps) {
       cancelled = true;
     };
   }, [budget]);
+
+  const projection = snapshot?.projection ?? [];
 
   const reserveAmount = (() => {
     const raw = localStorage.getItem('cys-reserve-amount');
@@ -106,6 +108,10 @@ export function CashflowChart({ budget }: CashflowChartProps) {
         <TrendingUp className="h-3.5 w-3.5" />
         Projected cashflow
       </h2>
+      <CashflowMethodology
+        scheduledCount={snapshot?.scheduledCount ?? 0}
+        hasRecurringIncome={snapshot?.hasRecurringIncome ?? false}
+      />
       <div
         className="border-border bg-card text-muted-foreground borderpx-3 rounded-xl [&_.recharts-surface]:!outline-none [&_.recharts-wrapper]:!outline-none"
         onFocus={(e) => e.target.blur()}
@@ -214,5 +220,70 @@ export function CashflowChart({ budget }: CashflowChartProps) {
         </ResponsiveContainer>
       </div>
     </section>
+  );
+}
+
+function CashflowMethodology({
+  scheduledCount,
+  hasRecurringIncome,
+}: {
+  scheduledCount: number;
+  hasRecurringIncome: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const coverageIssues: string[] = [];
+  if (scheduledCount === 0) {
+    coverageIssues.push(
+      'No scheduled transactions found. Mark recurring bills and income as scheduled in YNAB for an accurate projection.',
+    );
+  } else {
+    if (!hasRecurringIncome) {
+      coverageIssues.push(
+        'No recurring income detected. Add your paychecks as scheduled transactions in YNAB.',
+      );
+    }
+  }
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(!open)}
+        className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-xs transition-colors"
+      >
+        <Info className="h-3 w-3" />
+        How this works
+        <ChevronDown className={cn('h-3 w-3 transition-transform', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <div className="text-muted-foreground mt-2 space-y-2 text-xs leading-relaxed">
+          <p>
+            The chart projects your <strong>checking account balance</strong> over the next 14 days.
+            Past days use actual transactions. Future days subtract your daily flexible budget and
+            apply scheduled bills and income.
+          </p>
+          <p>
+            Credit card payments are included as checking outflows (money leaves your account when
+            the payment hits). Flex spending on credit cards is also captured in the daily drawdown
+            rate, so the projection is slightly conservative mid-cycle but corrects when payments
+            land.
+          </p>
+          <p>
+            Past month-end, the daily rate continues as a best estimate. The projection gets more
+            accurate when next month's budget is set up in YNAB.
+          </p>
+          {coverageIssues.length > 0 && (
+            <div className="border-warning/30 bg-warning/5 rounded-md border px-3 py-2">
+              <p className="text-warning font-medium">Coverage gaps</p>
+              {coverageIssues.map((issue, i) => (
+                <p key={i} className="mt-1">
+                  {issue}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
