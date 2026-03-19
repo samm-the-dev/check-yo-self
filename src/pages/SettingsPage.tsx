@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useInstallPrompt } from '@/hooks/useInstallPrompt';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/db';
@@ -7,8 +7,6 @@ import {
   logout,
   initiateLogin,
   getPlanId,
-  setPlanId,
-  fetchPlans,
   getCategoryTiers,
   setCategoryTiers,
 } from '@/services/ynab';
@@ -20,9 +18,6 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 export function SettingsPage() {
-  const [plans, setPlans] = useState<{ id: string; name: string }[]>([]);
-  const [selectedPlan, setSelectedPlan] = useState(getPlanId() ?? '');
-  const [saved, setSaved] = useState(false);
   const [tiers, setTiers] = useState<CategoryTierMap>(getCategoryTiers);
   const [reserve, setReserveState] = useState(() => {
     const raw = localStorage.getItem('cys-reserve-amount');
@@ -48,13 +43,6 @@ export function SettingsPage() {
     if (!cached) return null;
     return JSON.parse(cached.data) as CategoryGroupWithCategories[];
   });
-
-  const handleSelectPlan = (id: string) => {
-    setPlanId(id);
-    setSelectedPlan(id);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  };
 
   const handleDisconnect = async () => {
     await logout();
@@ -86,15 +74,6 @@ export function SettingsPage() {
     toast.success('Category tiers updated');
   };
 
-  // Load plans on mount if already connected
-  useEffect(() => {
-    if (getYnabToken()) {
-      fetchPlans()
-        .then(setPlans)
-        .catch(() => {});
-    }
-  }, []);
-
   // Filter visible category groups (skip internal/hidden)
   const visibleGroups = cachedCategories?.filter(
     (g) => !g.hidden && g.name !== 'Internal Master Category',
@@ -123,11 +102,6 @@ export function SettingsPage() {
                 <Trash2 className="h-4 w-4" />
               </button>
             </div>
-            {plans.length > 0 && (
-              <p className="text-muted-foreground mt-1 text-xs">
-                Budget: {plans.find((p) => p.id === selectedPlan)?.name ?? 'Unknown'}
-              </p>
-            )}
           </div>
         ) : (
           <div className="space-y-3">
@@ -143,29 +117,6 @@ export function SettingsPage() {
           </div>
         )}
 
-        {/* Budget selection (if multiple) */}
-        {plans.length > 1 && (
-          <div className="space-y-2">
-            <span className="text-sm font-medium">Select Budget</span>
-            <div className="space-y-1">
-              {plans.map((plan) => (
-                <button
-                  key={plan.id}
-                  onClick={() => handleSelectPlan(plan.id)}
-                  className={`w-full rounded-lg border px-4 py-3 text-left text-sm transition-colors ${
-                    selectedPlan === plan.id
-                      ? 'border-primary bg-primary/10 font-medium'
-                      : 'border-border bg-card hover:bg-accent'
-                  }`}
-                >
-                  {plan.name}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {saved && <p className="text-positive text-sm">Saved!</p>}
       </section>
 
       {/* Category Tiers */}

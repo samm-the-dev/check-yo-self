@@ -54,6 +54,11 @@ export function extractTokenFromHash(): string | null {
   if (!token) return null;
 
   localStorage.setItem(TOKEN_KEY, token);
+  // With default plan selection enabled in the YNAB OAuth app, the user
+  // picks their budget on YNAB's consent screen. We use "default" as the
+  // plan ID for API calls — YNAB resolves it server-side. The real UUID
+  // is resolved on the first sync for deep links.
+  localStorage.setItem(PLAN_KEY, 'default');
   // Clear the hash without triggering a navigation
   history.replaceState(null, '', window.location.pathname + window.location.search);
   return token;
@@ -230,6 +235,16 @@ export async function syncYnabData(force = false): Promise<void> {
     if (result.status === 'rejected' && isUnauthorized(result.reason)) {
       handleUnauthorized();
       return;
+    }
+  }
+
+  // Resolve "default" plan ID to the real UUID (needed for YNAB deep links)
+  if (planId === 'default') {
+    try {
+      const resp = await client.budgets.getBudgetById('default');
+      setPlanId(resp.data.budget.id);
+    } catch {
+      // Non-critical — deep links will just not work until next sync
     }
   }
 }
