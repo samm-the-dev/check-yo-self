@@ -14,15 +14,17 @@ export interface CashflowSnapshot {
   projection: CashflowEvent[];
 }
 
-/** Where a cashflow day event originated */
-export type CashflowEventSource = 'scheduled' | 'goal';
+/** Re-export from budget-math — single source of truth for this type */
+export type { CashflowEventSource } from '@/lib/budget-math';
+
+import type { CashflowEventSource } from '@/lib/budget-math';
 
 /** A discrete event (bill/paycheck) on a given day */
 export interface CashflowDayEvent {
   label: string;
   amount: number;
   type: 'income' | 'bill';
-  /** Origin: 'scheduled' = YNAB scheduled transaction, 'goal' = TBD goal target date */
+  /** Origin: 'scheduled' = non-goal event (actual or scheduled), 'goal' = TBD goal target date */
   source: CashflowEventSource;
 }
 

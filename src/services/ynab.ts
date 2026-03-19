@@ -108,6 +108,8 @@ export async function logout(): Promise<void> {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(PLAN_KEY);
   localStorage.removeItem(OVERRIDES_KEY);
+  // Clean up legacy tier key from pre-goal-derived era
+  localStorage.removeItem('cys-category-tiers');
   // Clear cached YNAB data from IndexedDB
   await db.cache.clear();
 }
@@ -322,7 +324,6 @@ export async function getDailyBudgetSnapshot(): Promise<DailyBudgetSnapshot | nu
         tier = deriveTierFromGoal({
           goalType: cat.goal_type ?? null,
           goalNeedsWholeAmount: cat.goal_needs_whole_amount ?? null,
-          goalSnoozed,
         });
       }
 

@@ -100,7 +100,9 @@ export interface FlexibleBreakdownResult {
   percentOfTotal: number;
 }
 
-/** Where a cashflow event originated */
+/** Where a cashflow event originated.
+ *  'scheduled' = actual past transaction or YNAB scheduled transaction (non-goal event).
+ *  'goal' = synthetic event from a TBD goal target date. */
 export type CashflowEventSource = 'scheduled' | 'goal';
 
 export interface CashflowEntry {
@@ -130,14 +132,15 @@ export interface CashflowEntry {
  * NEED + Refill  (goal_needs_whole_amount false/null) → 'flexible'
  * NEED + Set Aside (goal_needs_whole_amount true)     → 'necessity'
  * All other goal types (TB, TBD, MF, DEBT) or no goal → undefined (excluded)
+ *
+ * Snoozed goals still return their derived tier — the necessity gate
+ * handles snoozed categories separately (skips blocking for them).
  */
 export function deriveTierFromGoal(goal: {
   goalType: string | null | undefined;
   goalNeedsWholeAmount: boolean | null | undefined;
-  goalSnoozed: boolean;
 }): 'flexible' | 'necessity' | undefined {
   if (goal.goalType !== 'NEED') return undefined;
-  if (goal.goalSnoozed) return undefined;
   return goal.goalNeedsWholeAmount === true ? 'necessity' : 'flexible';
 }
 

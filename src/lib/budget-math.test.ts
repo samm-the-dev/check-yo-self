@@ -70,51 +70,35 @@ function makeScheduled(
 
 describe('deriveTierFromGoal', () => {
   it('NEED + Refill (false) → flexible', () => {
-    expect(
-      deriveTierFromGoal({ goalType: 'NEED', goalNeedsWholeAmount: false, goalSnoozed: false }),
-    ).toBe('flexible');
+    expect(deriveTierFromGoal({ goalType: 'NEED', goalNeedsWholeAmount: false })).toBe('flexible');
   });
 
   it('NEED + Refill (null) → flexible (null treated as Refill)', () => {
-    expect(
-      deriveTierFromGoal({ goalType: 'NEED', goalNeedsWholeAmount: null, goalSnoozed: false }),
-    ).toBe('flexible');
+    expect(deriveTierFromGoal({ goalType: 'NEED', goalNeedsWholeAmount: null })).toBe('flexible');
   });
 
   it('NEED + Set Aside (true) → necessity', () => {
-    expect(
-      deriveTierFromGoal({ goalType: 'NEED', goalNeedsWholeAmount: true, goalSnoozed: false }),
-    ).toBe('necessity');
+    expect(deriveTierFromGoal({ goalType: 'NEED', goalNeedsWholeAmount: true })).toBe('necessity');
   });
 
-  it('NEED + snoozed → undefined (excluded)', () => {
-    expect(
-      deriveTierFromGoal({ goalType: 'NEED', goalNeedsWholeAmount: false, goalSnoozed: true }),
-    ).toBeUndefined();
-    expect(
-      deriveTierFromGoal({ goalType: 'NEED', goalNeedsWholeAmount: true, goalSnoozed: true }),
-    ).toBeUndefined();
+  it('snoozed NEED goals still return their derived tier', () => {
+    // Snoozed flex — still contributes to daily budget
+    expect(deriveTierFromGoal({ goalType: 'NEED', goalNeedsWholeAmount: false })).toBe('flexible');
+    // Snoozed necessity — gate handles snoozed separately
+    expect(deriveTierFromGoal({ goalType: 'NEED', goalNeedsWholeAmount: true })).toBe('necessity');
   });
 
   it.each(['TB', 'TBD', 'MF', 'DEBT'])('%s goal type → undefined', (goalType) => {
-    expect(
-      deriveTierFromGoal({ goalType, goalNeedsWholeAmount: null, goalSnoozed: false }),
-    ).toBeUndefined();
+    expect(deriveTierFromGoal({ goalType, goalNeedsWholeAmount: null })).toBeUndefined();
   });
 
   it('no goal (null) → undefined', () => {
-    expect(
-      deriveTierFromGoal({ goalType: null, goalNeedsWholeAmount: null, goalSnoozed: false }),
-    ).toBeUndefined();
+    expect(deriveTierFromGoal({ goalType: null, goalNeedsWholeAmount: null })).toBeUndefined();
   });
 
   it('no goal (undefined) → undefined', () => {
     expect(
-      deriveTierFromGoal({
-        goalType: undefined,
-        goalNeedsWholeAmount: undefined,
-        goalSnoozed: false,
-      }),
+      deriveTierFromGoal({ goalType: undefined, goalNeedsWholeAmount: undefined }),
     ).toBeUndefined();
   });
 });

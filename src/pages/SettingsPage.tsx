@@ -147,7 +147,6 @@ export function SettingsPage() {
                           const derived = deriveTierFromGoal({
                             goalType: cat.goal_type ?? null,
                             goalNeedsWholeAmount: cat.goal_needs_whole_amount ?? null,
-                            goalSnoozed: cat.goal_snoozed_at != null,
                           });
                           const override = overrides[cat.id];
                           const effectiveTier = override
