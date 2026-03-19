@@ -124,6 +124,21 @@ describe('computeTotalAvailable', () => {
     const cats = [makeCategory({ id: '1', balance: 500, tier: 'necessity' })];
     expect(computeTotalAvailable(cats)).toBe(0);
   });
+
+  it('uses weeklyTarget for targeted categories instead of balance', () => {
+    const cats = [makeCategory({ id: '1', balance: 500, tier: 'flexible', weeklyTarget: 70 })];
+    // (70 / 7) * 14 = 140
+    expect(computeTotalAvailable(cats)).toBeCloseTo(140);
+  });
+
+  it('mixes targeted and non-targeted categories', () => {
+    const cats = [
+      makeCategory({ id: '1', balance: 200, tier: 'flexible', weeklyTarget: 70 }),
+      makeCategory({ id: '2', balance: 100, tier: 'flexible' }),
+    ];
+    // targeted: (70/7)*14 = 140, non-targeted: 100
+    expect(computeTotalAvailable(cats)).toBeCloseTo(240);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -168,6 +183,43 @@ describe('computeFlexibleBreakdown', () => {
     const result = computeFlexibleBreakdown(cats, [], 20);
     expect(result).toHaveLength(1);
     expect(result[0].balance).toBe(-20);
+  });
+
+  it('uses weeklyTarget when set, ignoring balance for dailyAmount', () => {
+    const cats = [
+      makeCategory({
+        id: '1',
+        name: 'Groceries',
+        balance: 500,
+        tier: 'flexible',
+        weeklyTarget: 70,
+      }),
+    ];
+    const result = computeFlexibleBreakdown(cats, [], 10);
+    expect(result[0].dailyAmount).toBeCloseTo(10); // 70 / 7
+    expect(result[0].windowAmount).toBeCloseTo(10 * 14);
+  });
+
+  it('falls back to balance-derived dailyAmount when no weeklyTarget', () => {
+    const cats = [makeCategory({ id: '1', name: 'Dining', balance: 140, tier: 'flexible' })];
+    const result = computeFlexibleBreakdown(cats, [], 10);
+    expect(result[0].dailyAmount).toBeCloseTo(10); // 140 / 14
+  });
+
+  it('mixes targeted and non-targeted categories', () => {
+    const cats = [
+      makeCategory({
+        id: '1',
+        name: 'Groceries',
+        balance: 500,
+        tier: 'flexible',
+        weeklyTarget: 70,
+      }),
+      makeCategory({ id: '2', name: 'Fun', balance: 140, tier: 'flexible' }),
+    ];
+    const result = computeFlexibleBreakdown(cats, [], 20);
+    expect(result[0].dailyAmount).toBeCloseTo(10); // target: 70/7
+    expect(result[1].dailyAmount).toBeCloseTo(10); // balance: 140/14
   });
 });
 
@@ -219,6 +271,20 @@ describe('computeCoverageDays', () => {
 
   it('returns 0 when no spending in window', () => {
     expect(computeCoverageDays(100, 0)).toBe(0);
+  });
+
+  it('uses dailyBudgetOverride when provided (weekly target scenario)', () => {
+    // weeklyTarget=70 → dailyBudget=10, spentInWindow=140 → consumed=14 (on pace)
+    expect(computeCoverageDays(500, 140, 10)).toBeCloseTo(14);
+    // spentInWindow=200 → consumed=20 (overspending, past today)
+    expect(computeCoverageDays(500, 200, 10)).toBeCloseTo(20);
+  });
+
+  it('falls back to balance-derived daily budget when no override', () => {
+    // balance=140, spentInWindow=140 → dailyBudget=10 → consumed=14
+    expect(computeCoverageDays(140, 140)).toBeCloseTo(14);
+    // Same result as explicit override of 10
+    expect(computeCoverageDays(140, 140, 10)).toBeCloseTo(14);
   });
 });
 

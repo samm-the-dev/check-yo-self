@@ -311,6 +311,21 @@ export async function getDailyBudgetSnapshot(
         budgeted,
         activity,
       });
+      // Extract spending target from YNAB "Needed for Spending" (NEED) goals only.
+      // Other goal types (MF, TB, TBD) are funding/savings goals, not spending pace.
+      let weeklyTarget: number | undefined;
+      let goalDisplay: CategoryInput['goalDisplay'];
+      if (cat.goal_type === 'NEED' && cat.goal_target != null && cat.goal_target > 0) {
+        const targetDollars = milliToDollars(cat.goal_target);
+        if (cat.goal_cadence === 2) {
+          weeklyTarget = targetDollars;
+          goalDisplay = { amount: targetDollars, cadence: 'weekly' };
+        } else if (cat.goal_cadence === 1 && cat.goal_cadence_frequency === 1) {
+          weeklyTarget = (targetDollars * 12) / 52;
+          goalDisplay = { amount: targetDollars, cadence: 'monthly' };
+        }
+      }
+
       categoryInputs.push({
         id: cat.id,
         name: cat.name,
@@ -319,6 +334,9 @@ export async function getDailyBudgetSnapshot(
         budgeted,
         activity,
         tier: hasTiers ? (tiers[cat.id] as CategoryInput['tier']) : undefined,
+        weeklyTarget,
+        goalDisplay,
+        goalSnoozed: cat.goal_snoozed_at != null,
       });
     }
   }

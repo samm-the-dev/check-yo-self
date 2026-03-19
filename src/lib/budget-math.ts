@@ -46,6 +46,13 @@ export interface CategoryInput {
   budgeted: number;
   activity: number;
   tier: 'flexible' | 'necessity' | undefined;
+  /** Weekly spending target from YNAB goal (dollars, normalized to weekly).
+   *  When set, overrides balance-derived dailyBudget for pace/coverage. */
+  weeklyTarget?: number;
+  /** Original YNAB goal amount and cadence for display purposes */
+  goalDisplay?: { amount: number; cadence: 'weekly' | 'monthly' };
+  /** True if the YNAB goal is snoozed */
+  goalSnoozed?: boolean;
 }
 
 export interface TransactionInput {
@@ -74,6 +81,10 @@ export interface FlexibleBreakdownResult {
   name: string;
   groupName: string;
   balance: number;
+  budgeted: number;
+  weeklyTarget?: number;
+  goalDisplay?: { amount: number; cadence: 'weekly' | 'monthly' };
+  goalSnoozed?: boolean;
   dailyAmount: number;
   windowAmount: number;
   spentInWindow: number;
@@ -104,14 +115,20 @@ export function computeDailyAmount(totalAvailable: number): number {
 }
 
 /**
- * Sum of all flexible category balances > 0.
- * Negative balances are excluded (not subtracted).
- * Necessity categories are excluded.
+ * Sum of all flexible category spending envelopes.
+ *
+ * Categories with a weekly target contribute `(weeklyTarget / 7) * LOOKAHEAD_DAYS`
+ * so that `computeDailyAmount(totalAvailable)` equals the sum of per-category daily
+ * amounts. Categories without a target contribute their positive balance.
+ * Negative balances and necessity categories are excluded.
  */
 export function computeTotalAvailable(categories: CategoryInput[]): number {
   let total = 0;
   for (const cat of categories) {
-    if (cat.tier === 'flexible' && cat.balance > 0) {
+    if (cat.tier !== 'flexible') continue;
+    if (cat.weeklyTarget != null) {
+      total += (cat.weeklyTarget / 7) * LOOKAHEAD_DAYS;
+    } else if (cat.balance > 0) {
       total += cat.balance;
     }
   }
@@ -156,7 +173,8 @@ export function computeFlexibleBreakdown(
   const flexCats = categories.filter((c) => c.tier === 'flexible');
 
   return flexCats.map((cat) => {
-    const catDailyAmount = cat.balance / LOOKAHEAD_DAYS;
+    const catDailyAmount =
+      cat.weeklyTarget != null ? cat.weeklyTarget / 7 : cat.balance / LOOKAHEAD_DAYS;
     const catSpentToday = spentTodayByCategory.get(cat.name) ?? 0;
     const catWindowAmount = catDailyAmount * LOOKBACK_DAYS;
 
@@ -164,6 +182,10 @@ export function computeFlexibleBreakdown(
       name: cat.name,
       groupName: cat.groupName,
       balance: cat.balance,
+      budgeted: cat.budgeted,
+      weeklyTarget: cat.weeklyTarget,
+      goalDisplay: cat.goalDisplay,
+      goalSnoozed: cat.goalSnoozed,
       dailyAmount: catDailyAmount,
       windowAmount: catWindowAmount,
       spentInWindow: windowSpentByCategory.get(cat.name) ?? 0,
@@ -242,9 +264,13 @@ export function computePaceOverspend(
  * today marker). > LOOKBACK_DAYS = ahead of pace (bar past today, spending
  * covers future days). Capped at LOOKBACK_DAYS + LOOKAHEAD_DAYS (28).
  */
-export function computeCoverageDays(balance: number, spentInWindow: number): number {
+export function computeCoverageDays(
+  balance: number,
+  spentInWindow: number,
+  dailyBudgetOverride?: number,
+): number {
   if (spentInWindow <= 0) return 0;
-  const dailyBudget = balance / LOOKAHEAD_DAYS;
+  const dailyBudget = dailyBudgetOverride ?? balance / LOOKAHEAD_DAYS;
   if (dailyBudget <= 0) return LOOKBACK_DAYS + LOOKAHEAD_DAYS;
   const consumed = spentInWindow / dailyBudget;
   return Math.min(consumed, LOOKBACK_DAYS + LOOKAHEAD_DAYS);

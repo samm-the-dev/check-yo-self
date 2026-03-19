@@ -19,7 +19,15 @@ export interface FlexibleCategoryDaily {
   name: string;
   groupName: string;
   balance: number;
-  /** balance / daysRemaining */
+  /** Budgeted this month in YNAB */
+  budgeted: number;
+  /** Weekly spending target from YNAB goal (undefined = no goal, balance-derived) */
+  weeklyTarget?: number;
+  /** Original YNAB goal amount and cadence for display */
+  goalDisplay?: { amount: number; cadence: 'weekly' | 'monthly' };
+  /** True if the YNAB goal is snoozed */
+  goalSnoozed?: boolean;
+  /** Target-derived or balance-derived daily rate */
   dailyAmount: number;
   /** Window budget (dailyAmount * LOOKBACK_DAYS) */
   windowAmount: number;
