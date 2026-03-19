@@ -112,6 +112,50 @@ export async function getCashflowSnapshot(
     }
   }
 
+  // Generate synthetic cashflow events from TBD (Target Balance by Date) goals.
+  // These represent known future expenses (property tax, annual insurance) with a
+  // target date. Dedup: skip if a scheduled transaction in the same category has
+  // a date within ±7 days of the goal target date.
+  if (catCached) {
+    const groups = JSON.parse(catCached.data) as ynab.CategoryGroupWithCategories[];
+    const horizonDate = new Date(today + 'T00:00:00');
+    horizonDate.setDate(horizonDate.getDate() + LOOKAHEAD_DAYS);
+    const horizonStr = horizonDate.toISOString().slice(0, 10);
+
+    for (const group of groups) {
+      if (group.hidden || group.name === 'Internal Master Category') continue;
+      for (const cat of group.categories) {
+        if (cat.hidden || cat.deleted) continue;
+        if (cat.goal_type !== 'TBD' || !cat.goal_target_date || !cat.goal_target) continue;
+
+        const targetDate = cat.goal_target_date.slice(0, 10);
+        if (targetDate <= today || targetDate > horizonStr) continue;
+
+        // Dedup: skip if a scheduled transaction in same category is within ±7 days
+        const targetMs = new Date(targetDate + 'T00:00:00').getTime();
+        const hasSimilarScheduled = scheduledTransactions.some(
+          (st) =>
+            st.categoryName === cat.name &&
+            Math.abs(new Date(st.dateNext + 'T00:00:00').getTime() - targetMs) <=
+              7 * 24 * 60 * 60 * 1000,
+        );
+        if (hasSimilarScheduled) continue;
+
+        // Add synthetic scheduled transaction for the TBD goal
+        scheduledTransactions.push({
+          dateNext: targetDate,
+          amount: -milliToDollars(cat.goal_target),
+          frequency: 'never',
+          payeeName: `${cat.name} (goal)`,
+          categoryName: cat.name,
+          transferAccountId: null,
+          hitsChecking: true,
+          source: 'goal',
+        });
+      }
+    }
+  }
+
   // Compute spending velocity from actual flex outflows (14-day rolling avg).
   // Falls back to budget-derived dailyAmount when no transaction data exists.
   const flexNames = new Set(budget?.flexibleBreakdown?.map((c) => c.name) ?? []);

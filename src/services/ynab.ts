@@ -4,8 +4,9 @@ import { SYNC_DEBOUNCE_MS } from '@/types/ynab-cache';
 import type {
   DailyBudgetSnapshot,
   CategoryBalance,
-  CategoryTierMap,
+  CategoryOverrides,
   NecessityGateStatus,
+  NecessityGateItem,
   TransactionSummary,
 } from '@/types/budget';
 import { todayISO } from '@/lib/utils';
@@ -13,6 +14,7 @@ import {
   computeDailyAmount,
   computeTotalAvailable,
   computeFlexibleBreakdown,
+  deriveTierFromGoal,
   LOOKAHEAD_DAYS,
   advanceByYnabFrequency,
   type CategoryInput,
@@ -20,7 +22,7 @@ import {
 
 const TOKEN_KEY = 'cys-ynab-token';
 const PLAN_KEY = 'cys-ynab-plan-id';
-const TIERS_KEY = 'cys-category-tiers';
+const OVERRIDES_KEY = 'cys-category-overrides';
 const STATE_KEY = 'cys-oauth-state';
 
 // ---------------------------------------------------------------------------
@@ -101,11 +103,11 @@ export function initiateLogin(): void {
   window.location.href = buildAuthUrl();
 }
 
-/** Clear token, plan, tiers, and cached data (sign out) */
+/** Clear token, plan, overrides, and cached data (sign out) */
 export async function logout(): Promise<void> {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(PLAN_KEY);
-  localStorage.removeItem(TIERS_KEY);
+  localStorage.removeItem(OVERRIDES_KEY);
   // Clear cached YNAB data from IndexedDB
   await db.cache.clear();
 }
@@ -138,14 +140,15 @@ export function setPlanId(id: string): void {
   localStorage.setItem(PLAN_KEY, id);
 }
 
-/** Get or set category tier mappings */
-export function getCategoryTiers(): CategoryTierMap {
-  const raw = localStorage.getItem(TIERS_KEY);
-  return raw ? (JSON.parse(raw) as CategoryTierMap) : {};
+/** Get per-category tier overrides */
+export function getCategoryOverrides(): CategoryOverrides {
+  const raw = localStorage.getItem(OVERRIDES_KEY);
+  return raw ? (JSON.parse(raw) as CategoryOverrides) : {};
 }
 
-export function setCategoryTiers(tiers: CategoryTierMap): void {
-  localStorage.setItem(TIERS_KEY, JSON.stringify(tiers));
+/** Set per-category tier overrides */
+export function setCategoryOverrides(overrides: CategoryOverrides): void {
+  localStorage.setItem(OVERRIDES_KEY, JSON.stringify(overrides));
 }
 
 /** Create an authenticated YNAB API client */
@@ -277,9 +280,7 @@ export function milliToDollars(milliunits: number): number {
 }
 
 /** Build the daily budget snapshot from cached YNAB data */
-export async function getDailyBudgetSnapshot(
-  tiers?: CategoryTierMap,
-): Promise<DailyBudgetSnapshot | null> {
+export async function getDailyBudgetSnapshot(): Promise<DailyBudgetSnapshot | null> {
   const categoryGroups = await readCache<ynab.CategoryGroupWithCategories[]>('categories');
   const transactions = await readCache<ynab.TransactionDetail[]>('transactions');
   const monthDetail = await readCache<ynab.MonthDetail>('month');
@@ -287,8 +288,7 @@ export async function getDailyBudgetSnapshot(
   if (!categoryGroups || !transactions) return null;
 
   const today = todayISO();
-
-  const hasTiers = tiers && Object.keys(tiers).length > 0;
+  const overrides = getCategoryOverrides();
 
   // Flatten categories, skip internal/hidden groups
   const categories: CategoryBalance[] = [];
@@ -302,6 +302,7 @@ export async function getDailyBudgetSnapshot(
       const balance = milliToDollars(cat.balance);
       const budgeted = milliToDollars(cat.budgeted);
       const activity = Math.abs(milliToDollars(cat.activity));
+      const goalSnoozed = cat.goal_snoozed_at != null;
 
       categories.push({
         id: cat.id,
@@ -311,6 +312,20 @@ export async function getDailyBudgetSnapshot(
         budgeted,
         activity,
       });
+
+      // Resolve tier: override wins, then goal-derived, then undefined (excluded)
+      const override = overrides[cat.id];
+      let tier: CategoryInput['tier'];
+      if (override) {
+        tier = override === 'skip' ? undefined : override;
+      } else {
+        tier = deriveTierFromGoal({
+          goalType: cat.goal_type ?? null,
+          goalNeedsWholeAmount: cat.goal_needs_whole_amount ?? null,
+          goalSnoozed,
+        });
+      }
+
       // Extract spending target from YNAB "Needed for Spending" (NEED) goals only.
       // Other goal types (MF, TB, TBD) are funding/savings goals, not spending pace.
       let weeklyTarget: number | undefined;
@@ -333,10 +348,10 @@ export async function getDailyBudgetSnapshot(
         balance,
         budgeted,
         activity,
-        tier: hasTiers ? (tiers[cat.id] as CategoryInput['tier']) : undefined,
+        tier,
         weeklyTarget,
         goalDisplay,
-        goalSnoozed: cat.goal_snoozed_at != null,
+        goalSnoozed,
         goalUnderFunded:
           cat.goal_under_funded != null && cat.goal_under_funded > 0
             ? milliToDollars(cat.goal_under_funded)
@@ -345,12 +360,15 @@ export async function getDailyBudgetSnapshot(
     }
   }
 
+  // Check if any category has a derived or overridden tier
+  const hasTiers = categoryInputs.some((c) => c.tier != null);
+
   // Compute totalAvailable via budget-math
   let totalAvailable: number;
   if (hasTiers) {
     totalAvailable = computeTotalAvailable(categoryInputs);
   } else {
-    // Legacy: all positive balances
+    // Legacy: all positive balances (no NEED goals and no overrides)
     totalAvailable = categories.reduce((sum, c) => sum + (c.balance > 0 ? c.balance : 0), 0);
   }
 
@@ -373,7 +391,7 @@ export async function getDailyBudgetSnapshot(
   };
 
   if (hasTiers) {
-    snapshot.gate = buildNecessityGate(categories, tiers);
+    snapshot.gate = buildNecessityGate(categoryInputs);
 
     // Convert transactions to budget-math input format
     const txnInputs = transactions.map((t) => ({
@@ -393,22 +411,30 @@ export async function getDailyBudgetSnapshot(
   return snapshot;
 }
 
-/** Check if necessity categories are budgeted for the current month */
-function buildNecessityGate(
-  categories: CategoryBalance[],
-  tiers: CategoryTierMap,
-): NecessityGateStatus {
-  const unbudgetedNecessities = categories.filter(
-    (cat) => tiers[cat.id] === 'necessity' && cat.budgeted === 0,
-  );
+/** Check if necessity categories are fully funded via goal_under_funded */
+function buildNecessityGate(categoryInputs: CategoryInput[]): NecessityGateStatus {
+  const underfundedNecessities: NecessityGateItem[] = categoryInputs
+    .filter(
+      (cat) =>
+        cat.tier === 'necessity' &&
+        !cat.goalSnoozed &&
+        cat.goalUnderFunded != null &&
+        cat.goalUnderFunded > 0,
+    )
+    .map((cat) => ({
+      id: cat.id,
+      name: cat.name,
+      groupName: cat.groupName,
+      shortfall: cat.goalUnderFunded!,
+    }));
 
   const planId = getResolvedPlanId();
   const now = new Date();
   const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
   return {
-    blocked: unbudgetedNecessities.length > 0,
-    unbudgetedNecessities,
+    blocked: underfundedNecessities.length > 0,
+    underfundedNecessities,
     ynabBudgetLink: planId ? `https://app.ynab.com/${planId}/budget/${month}` : null,
   };
 }

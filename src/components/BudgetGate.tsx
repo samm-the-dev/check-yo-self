@@ -1,4 +1,5 @@
 import { ShieldAlert, ExternalLink } from 'lucide-react';
+import { formatCurrency } from '@/lib/utils';
 import type { NecessityGateStatus } from '@/types/budget';
 
 interface BudgetGateProps {
@@ -14,11 +15,11 @@ export function BudgetGate({ gate }: BudgetGateProps) {
       </div>
 
       <p className="text-muted-foreground mt-2 text-sm">
-        These categories need a budget for this month before your spending pace can be calculated.
+        These categories need more funding this month before your spending pace can be calculated.
       </p>
 
       <ul className="mt-3 space-y-1.5">
-        {gate.unbudgetedNecessities.map((cat) => (
+        {gate.underfundedNecessities.map((cat) => (
           <li
             key={cat.id}
             className="border-border bg-card flex items-center justify-between rounded-lg border px-3 py-2"
@@ -27,7 +28,9 @@ export function BudgetGate({ gate }: BudgetGateProps) {
               <p className="text-sm font-medium">{cat.name}</p>
               <p className="text-muted-foreground text-xs">{cat.groupName}</p>
             </div>
-            <span className="text-warning text-xs font-medium">Not budgeted</span>
+            <span className="text-warning text-xs font-medium">
+              Needs {formatCurrency(cat.shortfall)}
+            </span>
           </li>
         ))}
       </ul>

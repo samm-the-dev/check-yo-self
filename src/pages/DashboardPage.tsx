@@ -1,6 +1,6 @@
 import { useBudget } from '@/hooks/useBudget';
 import type { TransactionSummary } from '@/types/budget';
-import { getCategoryTiers, getResolvedPlanId } from '@/services/ynab';
+import { getResolvedPlanId } from '@/services/ynab';
 import { formatCurrency, todayISO, cn } from '@/lib/utils';
 import { LOOKAHEAD_DAYS } from '@/lib/budget-math';
 import { BudgetGate } from '@/components/BudgetGate';
@@ -11,14 +11,12 @@ import {
   TrendingDown,
   ArrowRight,
   ExternalLink,
-  Settings,
   CalendarClock,
   ChevronDown,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
-const NUDGE_DISMISSED_KEY = 'cys-tier-nudge-dismissed';
 const SCHEDULED_NUDGE_DISMISSED_KEY = 'cys-scheduled-nudge-dismissed';
 
 export function DashboardPage() {
@@ -26,8 +24,6 @@ export function DashboardPage() {
     useBudget();
   const today = new Date(todayISO() + 'T00:00:00');
 
-  const hasTiers = Object.keys(getCategoryTiers()).length > 0;
-  const nudgeDismissed = localStorage.getItem(NUDGE_DISMISSED_KEY) === 'true';
   const scheduledNudgeDismissed = localStorage.getItem(SCHEDULED_NUDGE_DISMISSED_KEY) === 'true';
   // Month-specific key so it re-prompts each month
   const nextMonthKey = `cys-next-month-nudge-${today.getFullYear()}-${String(today.getMonth() + 2).padStart(2, '0')}`;
@@ -91,28 +87,6 @@ export function DashboardPage() {
       {error && (
         <div className="border-destructive/30 bg-destructive/10 text-destructive rounded-lg border px-4 py-3 text-sm">
           {error}
-        </div>
-      )}
-
-      {/* Tier setup nudge */}
-      {!hasTiers && !nudgeDismissed && budget && (
-        <div className="border-border bg-card flex items-center justify-between rounded-lg border px-4 py-3">
-          <div className="flex items-center gap-2">
-            <Settings className="text-muted-foreground h-4 w-4" />
-            <p className="text-muted-foreground text-sm">
-              <Link to="/settings" className="text-primary hover:underline">
-                Set up category tiers
-              </Link>{' '}
-              for more accurate budget tracking.
-            </p>
-          </div>
-          <button
-            onClick={() => localStorage.setItem(NUDGE_DISMISSED_KEY, 'true')}
-            className="text-muted-foreground hover:text-foreground ml-2 text-xs"
-            aria-label="Dismiss"
-          >
-            &times;
-          </button>
         </div>
       )}
 

@@ -79,6 +79,8 @@ export interface ScheduledTransactionInput {
   /** True if this transaction directly impacts the checking account balance.
    *  Non-checking-account transactions only affect the committed line. */
   hitsChecking: boolean;
+  /** Event origin — defaults to 'scheduled' if omitted */
+  source?: CashflowEventSource;
 }
 
 export interface FlexibleBreakdownResult {
@@ -98,6 +100,9 @@ export interface FlexibleBreakdownResult {
   percentOfTotal: number;
 }
 
+/** Where a cashflow event originated */
+export type CashflowEventSource = 'scheduled' | 'goal';
+
 export interface CashflowEntry {
   date: string;
   label: string;
@@ -107,7 +112,33 @@ export interface CashflowEntry {
   /** Committed balance: only moves on hitsChecking scheduled events (no daily drawdown) */
   checkingBalance: number;
   type: 'income' | 'bill';
-  dayEvents?: { label: string; amount: number; type: 'income' | 'bill' }[];
+  dayEvents?: {
+    label: string;
+    amount: number;
+    type: 'income' | 'bill';
+    source: CashflowEventSource;
+  }[];
+}
+
+// ---------------------------------------------------------------------------
+// Goal-derived tier classification
+// ---------------------------------------------------------------------------
+
+/**
+ * Derive a category's budget tier from YNAB goal metadata.
+ *
+ * NEED + Refill  (goal_needs_whole_amount false/null) → 'flexible'
+ * NEED + Set Aside (goal_needs_whole_amount true)     → 'necessity'
+ * All other goal types (TB, TBD, MF, DEBT) or no goal → undefined (excluded)
+ */
+export function deriveTierFromGoal(goal: {
+  goalType: string | null | undefined;
+  goalNeedsWholeAmount: boolean | null | undefined;
+  goalSnoozed: boolean;
+}): 'flexible' | 'necessity' | undefined {
+  if (goal.goalType !== 'NEED') return undefined;
+  if (goal.goalSnoozed) return undefined;
+  return goal.goalNeedsWholeAmount === true ? 'necessity' : 'flexible';
 }
 
 // ---------------------------------------------------------------------------
@@ -359,7 +390,13 @@ interface CashflowParams {
   scheduledTransactions: ScheduledTransactionInput[];
 }
 
-type DayEvent = { label: string; amount: number; type: 'income' | 'bill'; hitsChecking?: boolean };
+type DayEvent = {
+  label: string;
+  amount: number;
+  type: 'income' | 'bill';
+  source: CashflowEventSource;
+  hitsChecking?: boolean;
+};
 
 export interface MaterializedEvent {
   date: string;
@@ -367,6 +404,7 @@ export interface MaterializedEvent {
   label: string;
   type: 'income' | 'bill';
   hitsChecking: boolean;
+  source: CashflowEventSource;
 }
 
 /**
@@ -387,6 +425,7 @@ export function materializeFutureEvents(
       label: t.payeeName,
       type: (t.amount < 0 ? 'bill' : 'income') as 'income' | 'bill',
       hitsChecking: t.hitsChecking,
+      source: (t.source ?? 'scheduled') as CashflowEventSource,
     };
 
     if (t.frequency === 'never') {
@@ -458,6 +497,7 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
         label: t.payeeName,
         amount: t.amount,
         type: t.amount < 0 ? 'bill' : 'income',
+        source: 'scheduled',
       });
       pastByDate.set(t.date, list);
     }
@@ -471,6 +511,7 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
       label: ev.label,
       amount: ev.amount,
       type: ev.type,
+      source: ev.source,
       hitsChecking: ev.hitsChecking,
     });
     futureByDate.set(ev.date, list);

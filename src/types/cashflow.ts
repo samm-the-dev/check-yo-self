@@ -14,6 +14,18 @@ export interface CashflowSnapshot {
   projection: CashflowEvent[];
 }
 
+/** Where a cashflow day event originated */
+export type CashflowEventSource = 'scheduled' | 'goal';
+
+/** A discrete event (bill/paycheck) on a given day */
+export interface CashflowDayEvent {
+  label: string;
+  amount: number;
+  type: 'income' | 'bill';
+  /** Origin: 'scheduled' = YNAB scheduled transaction, 'goal' = TBD goal target date */
+  source: CashflowEventSource;
+}
+
 /** A single point in the cashflow timeline (one per day) */
 export interface CashflowEvent {
   date: string;
@@ -25,5 +37,5 @@ export interface CashflowEvent {
   checkingBalance: number;
   type: 'income' | 'bill';
   /** Discrete events (bills/paychecks) on this day, if any */
-  dayEvents?: { label: string; amount: number; type: 'income' | 'bill' }[];
+  dayEvents?: CashflowDayEvent[];
 }

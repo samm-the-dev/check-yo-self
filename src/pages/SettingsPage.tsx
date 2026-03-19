@@ -7,23 +7,25 @@ import {
   logout,
   initiateLogin,
   getPlanId,
-  getCategoryTiers,
-  setCategoryTiers,
+  getCategoryOverrides,
+  setCategoryOverrides,
 } from '@/services/ynab';
-import type { CategoryTier, CategoryTierMap } from '@/types/budget';
+import { deriveTierFromGoal } from '@/lib/budget-math';
+import type { CategoryOverrides } from '@/types/budget';
 import type { CategoryGroupWithCategories } from 'ynab';
 import { Check, Trash2, ChevronDown, Download } from 'lucide-react';
 
-import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
+type TierValue = 'necessity' | 'flexible' | 'skip';
+
 export function SettingsPage() {
-  const [tiers, setTiers] = useState<CategoryTierMap>(getCategoryTiers);
+  const [overrides, setOverrides] = useState<CategoryOverrides>(getCategoryOverrides);
   const [reserve, setReserveState] = useState(() => {
     const raw = localStorage.getItem('cys-reserve-amount');
     return raw ? parseFloat(raw) : 0;
   });
-  const [tiersExpanded, setTiersExpanded] = useState(false);
+  const [overridesExpanded, setOverridesExpanded] = useState(false);
   const { isInstallable, installApp } = useInstallPrompt();
 
   const updateReserve = (val: number) => {
@@ -37,7 +39,7 @@ export function SettingsPage() {
 
   const isConnected = !!getYnabToken() && !!getPlanId();
 
-  // Load cached YNAB categories for tier assignment
+  // Load cached YNAB categories for override display
   const cachedCategories = useLiveQuery(async () => {
     const cached = await db.cache.get('categories');
     if (!cached) return null;
@@ -52,29 +54,15 @@ export function SettingsPage() {
     }
   };
 
-  const handleTierChange = (categoryId: string, tier: CategoryTier | 'excluded') => {
-    const next = { ...tiers };
-    if (tier === 'excluded') {
+  const handleOverrideChange = (categoryId: string, tier: TierValue | 'auto') => {
+    const next = { ...overrides };
+    if (tier === 'auto') {
       delete next[categoryId];
     } else {
       next[categoryId] = tier;
     }
-    setTiers(next);
-    setCategoryTiers(next);
-  };
-
-  const handleGroupTierChange = (categoryIds: string[], tier: CategoryTier | 'excluded') => {
-    const next = { ...tiers };
-    for (const id of categoryIds) {
-      if (tier === 'excluded') {
-        delete next[id];
-      } else {
-        next[id] = tier;
-      }
-    }
-    setTiers(next);
-    setCategoryTiers(next);
-    toast.success('Category tiers updated');
+    setOverrides(next);
+    setCategoryOverrides(next);
   };
 
   // Filter visible category groups (skip internal/hidden)
@@ -121,87 +109,72 @@ export function SettingsPage() {
         )}
       </section>
 
-      {/* Category Tiers */}
+      {/* Category Overrides */}
       {isConnected && visibleGroups && visibleGroups.length > 0 && (
         <section className="border-border bg-card overflow-hidden rounded-2xl border">
           <button
-            onClick={() => setTiersExpanded(!tiersExpanded)}
+            onClick={() => setOverridesExpanded(!overridesExpanded)}
             className="flex w-full items-center justify-between px-4 py-3 text-left"
           >
-            <h2 className="text-lg font-semibold">Category Tiers</h2>
+            <h2 className="text-lg font-semibold">Category Overrides</h2>
             <ChevronDown
               className={cn(
                 'text-muted-foreground h-5 w-5 shrink-0 transition-transform',
-                tiersExpanded && 'rotate-180',
+                overridesExpanded && 'rotate-180',
               )}
             />
           </button>
 
-          {tiersExpanded && (
+          {overridesExpanded && (
             <div className="border-border border-t px-4 pt-3 pb-4">
-              <dl className="text-muted-foreground mb-4 space-y-1 text-sm">
-                <div>
-                  <dt className="text-warning inline font-semibold">Need</dt>
-                  {' - '}
-                  <dd className="inline">
-                    Must be budgeted each month or the weekly budget won't show.
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-primary inline font-semibold">Flex</dt>
-                  {' - '}
-                  <dd className="inline">
-                    Discretionary spending that feeds your weekly budget number.
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-foreground inline font-semibold">Skip</dt>
-                  {' - '}
-                  <dd className="inline">Not tracked.</dd>
-                </div>
-              </dl>
+              <p className="text-muted-foreground mb-4 text-sm">
+                Tiers are derived from YNAB goals. Override categories where the default doesn't
+                match your intent.
+              </p>
 
-              <div className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1.5">
+              <div className="space-y-4">
                 {visibleGroups.map((group) => {
                   const visibleCats = group.categories.filter((c) => !c.hidden && !c.deleted);
                   if (visibleCats.length === 0) return null;
 
-                  const groupTiers = visibleCats.map((c) => tiers[c.id] ?? 'excluded');
-                  const allSame = groupTiers.every((t) => t === groupTiers[0]);
-                  const groupTier = allSame ? groupTiers[0] : null;
-
                   return (
-                    <div
-                      key={group.id}
-                      className="col-span-full grid grid-cols-subgrid gap-y-1.5 pt-3 first:pt-0"
-                    >
-                      {/* Group header */}
-                      <h3 className="text-muted-foreground self-center text-xs font-semibold tracking-wider uppercase">
+                    <div key={group.id}>
+                      <h3 className="text-muted-foreground mb-1.5 text-xs font-semibold tracking-wider uppercase">
                         {group.name}
                       </h3>
-                      <TierToggle
-                        value={groupTier}
-                        onChange={(tier) =>
-                          handleGroupTierChange(
-                            visibleCats.map((c) => c.id),
-                            tier,
-                          )
-                        }
-                      />
+                      <div className="space-y-1">
+                        {visibleCats.map((cat) => {
+                          const derived = deriveTierFromGoal({
+                            goalType: cat.goal_type ?? null,
+                            goalNeedsWholeAmount: cat.goal_needs_whole_amount ?? null,
+                            goalSnoozed: cat.goal_snoozed_at != null,
+                          });
+                          const override = overrides[cat.id];
+                          const effectiveTier = override
+                            ? override === 'skip'
+                              ? undefined
+                              : override
+                            : derived;
 
-                      {/* Category rows */}
-                      {visibleCats.map((cat) => (
-                        <div
-                          key={cat.id}
-                          className="col-span-full grid grid-cols-subgrid items-center"
-                        >
-                          <span className="min-w-0 truncate text-sm">{cat.name}</span>
-                          <TierToggle
-                            value={tiers[cat.id] ?? 'excluded'}
-                            onChange={(tier) => handleTierChange(cat.id, tier)}
-                          />
-                        </div>
-                      ))}
+                          return (
+                            <div
+                              key={cat.id}
+                              className="flex items-center justify-between gap-2 py-1"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <span className="truncate text-sm">{cat.name}</span>
+                                <DerivedBadge derived={derived} hasOverride={!!override} />
+                              </div>
+                              <OverrideToggle
+                                derived={derived}
+                                override={override}
+                                effectiveTier={effectiveTier}
+                                onChange={(tier) => handleOverrideChange(cat.id, tier)}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   );
                 })}
@@ -278,42 +251,90 @@ export function SettingsPage() {
   );
 }
 
-const TIER_TOGGLE_OPTIONS: { value: CategoryTier | 'excluded'; label: string }[] = [
+function DerivedBadge({
+  derived,
+  hasOverride,
+}: {
+  derived: 'flexible' | 'necessity' | undefined;
+  hasOverride: boolean;
+}) {
+  if (hasOverride) {
+    return (
+      <span className="text-muted-foreground/60 ml-1.5 text-xs">
+        (was: {derived ? (derived === 'necessity' ? 'Need' : 'Flex') : 'Excluded'})
+      </span>
+    );
+  }
+  return null;
+}
+
+const OVERRIDE_OPTIONS: { value: TierValue | 'auto'; label: string }[] = [
   { value: 'necessity', label: 'Need' },
   { value: 'flexible', label: 'Flex' },
-  { value: 'excluded', label: 'Skip' },
+  { value: 'skip', label: 'Skip' },
 ];
 
-function TierToggle({
-  value,
+function OverrideToggle({
+  derived,
+  override,
+  effectiveTier,
   onChange,
 }: {
-  value: CategoryTier | 'excluded' | null | undefined;
-  onChange: (tier: CategoryTier | 'excluded') => void;
+  derived: 'flexible' | 'necessity' | undefined;
+  override: TierValue | undefined;
+  effectiveTier: 'flexible' | 'necessity' | undefined;
+  onChange: (tier: TierValue | 'auto') => void;
 }) {
   return (
     <div className="bg-muted inline-flex shrink-0 rounded-lg p-0.5 text-xs">
-      {TIER_TOGGLE_OPTIONS.map((opt) => (
-        <button
-          key={opt.value}
-          onClick={() => onChange(opt.value)}
-          className={cn(
-            'rounded-md px-3 py-1 font-medium transition-all',
-            value === opt.value
-              ? cn(
-                  'shadow-sm',
-                  opt.value === 'necessity'
-                    ? 'bg-warning/15 text-warning'
-                    : opt.value === 'flexible'
-                      ? 'bg-primary/15 text-primary'
-                      : 'bg-card text-foreground',
-                )
-              : 'text-muted-foreground/40 hover:text-muted-foreground',
-          )}
-        >
-          {opt.label}
-        </button>
-      ))}
+      {OVERRIDE_OPTIONS.map((opt) => {
+        // Determine if this button represents the current effective state
+        const isActive =
+          override === opt.value ||
+          (!override &&
+            ((opt.value === 'skip' && derived === undefined) ||
+              (opt.value !== 'skip' && derived === opt.value)));
+
+        return (
+          <button
+            key={opt.value}
+            onClick={() => {
+              // If clicking what's already the derived default, clear the override
+              if (opt.value === 'skip' && derived === undefined && override) {
+                onChange('auto');
+              } else if (opt.value !== 'skip' && opt.value === derived && override) {
+                onChange('auto');
+              } else if (isActive && !override) {
+                // Already at derived default, no-op
+              } else {
+                onChange(opt.value);
+              }
+            }}
+            className={cn(
+              'rounded-md px-3 py-1 font-medium transition-all',
+              isActive
+                ? cn(
+                    'shadow-sm',
+                    effectiveTier === 'necessity'
+                      ? 'bg-warning/15 text-warning'
+                      : effectiveTier === 'flexible'
+                        ? 'bg-primary/15 text-primary'
+                        : 'bg-card text-foreground',
+                    override && 'ring-1 ring-offset-1 ring-offset-transparent',
+                    override &&
+                      (effectiveTier === 'necessity'
+                        ? 'ring-warning/30'
+                        : effectiveTier === 'flexible'
+                          ? 'ring-primary/30'
+                          : 'ring-border'),
+                  )
+                : 'text-muted-foreground/40 hover:text-muted-foreground',
+            )}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

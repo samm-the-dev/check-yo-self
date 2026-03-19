@@ -40,7 +40,8 @@ function CustomTooltip({
       <p className="text-xs font-medium">{formatDate(ev.date)}</p>
       {ev.dayEvents?.map((de, i) => (
         <p key={i} className="text-muted-foreground text-xs">
-          {de.label}{' '}
+          {de.label}
+          {de.source === 'goal' ? ' (est.)' : ''}{' '}
           <span className={de.type === 'income' ? 'text-primary' : 'text-destructive'}>
             {de.amount >= 0 ? '+' : ''}
             {formatCurrency(de.amount)}
@@ -72,9 +73,35 @@ function EventDot(props: { cx?: number; cy?: number; payload?: CashflowEvent }) 
 
   const hasIncome = payload.dayEvents.some((e) => e.type === 'income');
   const hasBill = payload.dayEvents.some((e) => e.type === 'bill');
+  const hasGoalEvent = payload.dayEvents.some((e) => e.source === 'goal');
 
-  // Income = green, bill = orange/warning, both = green
-  const color = hasIncome ? 'hsl(152 60% 50%)' : hasBill ? 'hsl(38 92% 50%)' : 'hsl(152 60% 50%)';
+  // Goal-derived = purple, income = green, bill = orange/warning
+  const color = hasGoalEvent
+    ? 'hsl(270 60% 60%)'
+    : hasIncome
+      ? 'hsl(152 60% 50%)'
+      : hasBill
+        ? 'hsl(38 92% 50%)'
+        : 'hsl(152 60% 50%)';
+
+  // Goal events get a dashed ring to distinguish from scheduled
+  if (hasGoalEvent) {
+    return (
+      <g>
+        <circle cx={cx} cy={cy} r={4} fill={color} stroke="none" />
+        <circle
+          cx={cx}
+          cy={cy}
+          r={6.5}
+          fill="none"
+          stroke={color}
+          strokeWidth={1}
+          strokeDasharray="2 2"
+          strokeOpacity={0.7}
+        />
+      </g>
+    );
+  }
 
   return <circle cx={cx} cy={cy} r={4} fill={color} stroke="none" />;
 }

@@ -15,6 +15,7 @@ import {
   buildCashflowProjection,
   advanceByYnabFrequency,
   materializeFutureEvents,
+  deriveTierFromGoal,
   LOOKAHEAD_DAYS,
   type CategoryInput,
   type ScheduledTransactionInput,
@@ -62,6 +63,61 @@ function makeScheduled(
     ...overrides,
   };
 }
+
+// ---------------------------------------------------------------------------
+// deriveTierFromGoal
+// ---------------------------------------------------------------------------
+
+describe('deriveTierFromGoal', () => {
+  it('NEED + Refill (false) → flexible', () => {
+    expect(
+      deriveTierFromGoal({ goalType: 'NEED', goalNeedsWholeAmount: false, goalSnoozed: false }),
+    ).toBe('flexible');
+  });
+
+  it('NEED + Refill (null) → flexible (null treated as Refill)', () => {
+    expect(
+      deriveTierFromGoal({ goalType: 'NEED', goalNeedsWholeAmount: null, goalSnoozed: false }),
+    ).toBe('flexible');
+  });
+
+  it('NEED + Set Aside (true) → necessity', () => {
+    expect(
+      deriveTierFromGoal({ goalType: 'NEED', goalNeedsWholeAmount: true, goalSnoozed: false }),
+    ).toBe('necessity');
+  });
+
+  it('NEED + snoozed → undefined (excluded)', () => {
+    expect(
+      deriveTierFromGoal({ goalType: 'NEED', goalNeedsWholeAmount: false, goalSnoozed: true }),
+    ).toBeUndefined();
+    expect(
+      deriveTierFromGoal({ goalType: 'NEED', goalNeedsWholeAmount: true, goalSnoozed: true }),
+    ).toBeUndefined();
+  });
+
+  it.each(['TB', 'TBD', 'MF', 'DEBT'])('%s goal type → undefined', (goalType) => {
+    expect(
+      deriveTierFromGoal({ goalType, goalNeedsWholeAmount: null, goalSnoozed: false }),
+    ).toBeUndefined();
+  });
+
+  it('no goal (null) → undefined', () => {
+    expect(
+      deriveTierFromGoal({ goalType: null, goalNeedsWholeAmount: null, goalSnoozed: false }),
+    ).toBeUndefined();
+  });
+
+  it('no goal (undefined) → undefined', () => {
+    expect(
+      deriveTierFromGoal({
+        goalType: undefined,
+        goalNeedsWholeAmount: undefined,
+        goalSnoozed: false,
+      }),
+    ).toBeUndefined();
+  });
+});
 
 // ---------------------------------------------------------------------------
 // dailyAmount
