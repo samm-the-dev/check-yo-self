@@ -309,6 +309,18 @@ export function SettingsPage() {
           Install app
         </button>
       )}
+
+      {/* Footer */}
+      <p className="text-muted-foreground text-center text-xs">
+        <a
+          href={`${import.meta.env.BASE_URL}privacy.html`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-foreground underline underline-offset-2 transition-colors"
+        >
+          Privacy Policy
+        </a>
+      </p>
     </div>
   );
 }

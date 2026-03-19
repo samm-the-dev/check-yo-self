@@ -93,6 +93,18 @@ export function Onboarding({ onComplete }: OnboardingProps) {
             Sign in with YNAB
             <ChevronRight className="h-4 w-4" />
           </button>
+
+          <p className="text-muted-foreground text-center text-xs">
+            By signing in you agree to our{' '}
+            <a
+              href={`${import.meta.env.BASE_URL}privacy.html`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary underline underline-offset-2"
+            >
+              Privacy Policy
+            </a>
+          </p>
         </div>
       )}
 
