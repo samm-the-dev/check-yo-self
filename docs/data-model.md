@@ -1,6 +1,6 @@
 # Check Yo Self — Data Model (v2)
 
-> YNAB-powered cashflow and daily budget tool. Standalone PWA on `apps.samm-the.dev/check-yo-self`. YNAB is the system of record for all financial data. Check Yo Self reads from it and provides a daily budget view, category-tier analysis, and cashflow projection.
+> YNAB-powered cashflow and daily budget tool. Standalone PWA on `apps.samm-the.dev/check-yo-self`. YNAB is the system of record for all financial data. Check Yo Self reads from it and provides a daily budget view, goal-derived category classification, and cashflow projection.
 
 ---
 
@@ -36,7 +36,7 @@
 │  │ budget-math.ts                  │    │
 │  │ (pure functions, fully tested)  │    │
 │  │                                 │    │
-│  │ Daily budget · Category tiers   │    │
+│  │ Daily budget · Goal-derived tiers│    │
 │  │ Flexible breakdown · Pace       │    │
 │  │ Cashflow projection             │    │
 │  └─────────────────────────────────┘    │
@@ -121,24 +121,25 @@ All budget computation lives in `budget-math.ts` as pure functions — no React,
 
 ### Key Functions
 
-| Function                   | Purpose                                        |
-| -------------------------- | ---------------------------------------------- |
-| `computeDailyAmount`       | `totalAvailable / LOOKAHEAD_DAYS`              |
-| `computeTotalAvailable`    | Sum flexible categories with positive balance  |
-| `computeFlexibleBreakdown` | Per-category daily/weekly amounts, spending    |
-| `computePaceOverspend`     | Spending vs expected pace over lookback window |
-| `computeCoverageDays`      | How long a balance lasts at current spend rate |
-| `buildCashflowProjection`  | Past + today + future balance walk             |
-| `advanceByYnabFrequency`   | Date advancement for all YNAB recurrence types |
+| Function                   | Purpose                                          |
+| -------------------------- | ------------------------------------------------ |
+| `deriveTierFromGoal`       | YNAB goal metadata → flexible/necessity/excluded |
+| `computeDailyAmount`       | `totalAvailable / LOOKAHEAD_DAYS`                |
+| `computeTotalAvailable`    | Sum flexible categories with positive balance    |
+| `computeFlexibleBreakdown` | Per-category daily/weekly amounts, spending      |
+| `computePaceOverspend`     | Spending vs expected pace over lookback window   |
+| `computeCoverageDays`      | How long a balance lasts at current spend rate   |
+| `buildCashflowProjection`  | Past + today + future balance walk               |
+| `advanceByYnabFrequency`   | Date advancement for all YNAB recurrence types   |
 
 ---
 
 ## Token Storage
 
-| Token             | Storage      | Notes                                             |
-| ----------------- | ------------ | ------------------------------------------------- |
-| YNAB OAuth Token  | localStorage | Implicit grant. Read-only scope. Single-user app. |
-| Category Tier Map | localStorage | User-configured necessity/flexible assignments.   |
+| Token              | Storage      | Notes                                                                      |
+| ------------------ | ------------ | -------------------------------------------------------------------------- |
+| YNAB OAuth Token   | localStorage | Implicit grant. Read-only scope. Single-user app.                          |
+| Category Overrides | localStorage | Per-category tier overrides where goal-derived classification doesn't fit. |
 
 **Security note:** Storing tokens in localStorage in a PWA is acceptable for a single-user personal tool. The YNAB token is read-only by default.
 
@@ -146,11 +147,11 @@ All budget computation lives in `budget-math.ts` as pure functions — no React,
 
 ## Phase Plan
 
-| Phase                   | Scope                                                                                                                        | Status                       |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
-| **Phase 1 — Dashboard** | YNAB OAuth, daily budget, category tiers, flexible breakdown, cashflow chart, overspend analysis, move-money recommendations | Live                         |
-| **Phase 2 — Coaching**  | AI coaching, morning/evening check-in ritual, personalized insights                                                          | Parked on `feature/coaching` |
-| **Phase 3 — Polish**    | Spending trends, streak tracking, ecosystem wiring                                                                           | Planned                      |
+| Phase                   | Scope                                                                                                                                                                              | Status                       |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| **Phase 1 — Dashboard** | YNAB OAuth, daily budget, goal-derived category classification with overrides, flexible breakdown, cashflow chart, TBD goal events, overspend analysis, move-money recommendations | Live                         |
+| **Phase 2 — Coaching**  | AI coaching, morning/evening check-in ritual, personalized insights                                                                                                                | Parked on `feature/coaching` |
+| **Phase 3 — Polish**    | Spending trends, streak tracking, ecosystem wiring                                                                                                                                 | Planned                      |
 
 ---
 

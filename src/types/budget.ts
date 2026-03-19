@@ -65,9 +65,9 @@ export interface DailyBudgetSnapshot {
   categoryBreakdown: CategoryBalance[];
   /** YNAB Ready to Assign (dollars). Positive = unassigned funds, negative = overassigned. */
   readyToAssign: number | null;
-  /** Gate status — present when tiers are configured */
+  /** Gate status — present when NEED goals or overrides classify categories */
   gate?: NecessityGateStatus;
-  /** Per-category daily breakdown — present when tiers are configured */
+  /** Per-category daily breakdown — present when NEED goals or overrides classify categories */
   flexibleBreakdown?: FlexibleCategoryDaily[];
 }
 
