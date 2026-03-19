@@ -282,17 +282,17 @@ function CashflowMethodology({
             The chart shows two lines. The <strong>solid line</strong> is your checking account
             balance — it only moves on scheduled transactions that directly hit checking (direct
             debits, income, account transfers). The <strong>dashed line</strong> subtracts your
-            daily flex budget on top of that, showing what's effectively spoken for.
+            recent daily spending rate on top of that, showing what's effectively spoken for.
           </p>
           <p>
-            <strong>Why two lines?</strong> Your daily flex budget is an estimate — it can change,
-            and its impact on checking is deferred depending on how you pay. Scheduled transactions
-            are more concrete. The solid line shows confirmed cashflow; the dashed line layers in
-            budgetary intent.
+            <strong>Why two lines?</strong> The spending estimate is based on your actual pace over
+            the last two weeks — it adapts as your habits change. Scheduled transactions are more
+            concrete. The solid line shows confirmed cashflow; the dashed line layers in your real
+            spending trajectory.
           </p>
           <p>
-            <strong>Month boundary:</strong> The daily rate stays constant past month-end. If your
-            next month's budget changes your spending mix, the projection won't reflect that yet.
+            <strong>Month boundary:</strong> The spending rate stays constant past month-end. If
+            your habits change next month, the projection won't reflect that yet.
           </p>
           <p>
             <strong>Accuracy depends on YNAB setup.</strong> Mark recurring bills and income as

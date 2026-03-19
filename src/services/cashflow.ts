@@ -6,6 +6,7 @@ import type { DailyBudgetSnapshot } from '@/types/budget';
 import {
   buildCashflowProjection,
   computeSpendingVelocity,
+  advanceByYnabFrequency,
   type TransactionInput,
   type ScheduledTransactionInput,
 } from '@/lib/budget-math';
@@ -121,20 +122,43 @@ export async function getCashflowSnapshot(
   }
 
   // Cashflow warning: checking-account bills due before next income exceed balance.
-  // Uses scheduled inputs (not projection events) so we can filter by hitsChecking.
+  // Materializes recurring scheduled transactions so biweekly/weekly bills are counted.
   let cashflowWarning = false;
   if (checkingBalance !== null) {
-    const futureChecking = scheduledTransactions.filter(
-      (t) => t.hitsChecking && t.dateNext > today,
-    );
-    const sortedDates = [...new Set(futureChecking.map((t) => t.dateNext))].sort();
+    const horizonDate = new Date(today + 'T00:00:00');
+    horizonDate.setDate(horizonDate.getDate() + LOOKAHEAD_DAYS);
+    const horizonStr = horizonDate.toISOString().slice(0, 10);
+
+    // Materialize all future hitsChecking events within the lookahead window
+    const materializedEvents: { date: string; amount: number }[] = [];
+    for (const t of scheduledTransactions) {
+      if (!t.hitsChecking) continue;
+      if (t.frequency === 'never') {
+        if (t.dateNext > today && t.dateNext <= horizonStr) {
+          materializedEvents.push({ date: t.dateNext, amount: t.amount });
+        }
+      } else {
+        const d = new Date(t.dateNext + 'T00:00:00');
+        while (d.toISOString().slice(0, 10) <= today) {
+          advanceByYnabFrequency(d, t.frequency);
+        }
+        let dateStr = d.toISOString().slice(0, 10);
+        while (dateStr <= horizonStr) {
+          materializedEvents.push({ date: dateStr, amount: t.amount });
+          advanceByYnabFrequency(d, t.frequency);
+          dateStr = d.toISOString().slice(0, 10);
+        }
+      }
+    }
+
+    const sortedDates = [...new Set(materializedEvents.map((e) => e.date))].sort();
     const nextIncomeDate = sortedDates.find((date) =>
-      futureChecking.some((t) => t.dateNext === date && t.amount > 0),
+      materializedEvents.some((e) => e.date === date && e.amount > 0),
     );
     if (nextIncomeDate) {
-      const billsBefore = futureChecking
-        .filter((t) => t.dateNext < nextIncomeDate && t.amount < 0)
-        .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+      const billsBefore = materializedEvents
+        .filter((e) => e.date < nextIncomeDate && e.amount < 0)
+        .reduce((sum, e) => sum + Math.abs(e.amount), 0);
       cashflowWarning = billsBefore > checkingBalance;
     }
   }
