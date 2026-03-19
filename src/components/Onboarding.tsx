@@ -1,11 +1,7 @@
 import { ChevronRight, Shield } from 'lucide-react';
 import { initiateLogin } from '@/services/ynab';
 
-interface OnboardingProps {
-  onComplete: () => void;
-}
-
-export function Onboarding({ onComplete: _onComplete }: OnboardingProps) {
+export function Onboarding() {
   return (
     <div className="mx-auto max-w-lg space-y-6 py-8">
       <header className="text-center">

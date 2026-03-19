@@ -25,7 +25,7 @@ export default function App() {
   if (!ready) {
     return (
       <div className="bg-background text-foreground min-h-dvh px-4">
-        <Onboarding onComplete={() => setReady(true)} />
+        <Onboarding />
         <Toaster position="top-center" />
       </div>
     );
