@@ -589,9 +589,8 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
     dayEvents: todayEvents,
   });
 
-  // FUTURE: balance = projectedDailySpend drawdown + all scheduled events (committed view)
-  //         checkingBalance = only hitsChecking events (no daily drawdown,
-  //         no non-checking-account charges)
+  // FUTURE: balance (projected) = daily spending drawdown + hitsChecking scheduled events.
+  //         checkingBalance (committed) = only hitsChecking events (no daily drawdown).
   let futureBalance = checkingBalance;
   let futureCheckingBalance = checkingBalance;
   const fd = new Date(today + 'T00:00:00');
