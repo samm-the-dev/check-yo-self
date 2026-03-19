@@ -24,6 +24,14 @@
 
 import { todayISO } from '@/lib/utils';
 
+/** Format a local Date as YYYY-MM-DD without timezone shift. */
+function formatLocalDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 // ---------------------------------------------------------------------------
 // Input types (decoupled from YNAB SDK types)
 // ---------------------------------------------------------------------------
@@ -135,7 +143,7 @@ export function computeFlexibleBreakdown(
   const todayStr = today ?? todayISO();
   const windowStart = new Date(todayStr + 'T00:00:00');
   windowStart.setDate(windowStart.getDate() - LOOKBACK_DAYS);
-  const windowStartStr = windowStart.toISOString().slice(0, 10);
+  const windowStartStr = formatLocalDate(windowStart);
 
   // Spending by category for today
   const spentTodayByCategory = new Map<string, number>();
@@ -203,7 +211,7 @@ export function computeSpendingVelocity(
 ): number {
   const windowStart = new Date(today + 'T00:00:00');
   windowStart.setDate(windowStart.getDate() - lookbackDays);
-  const windowStartStr = windowStart.toISOString().slice(0, 10);
+  const windowStartStr = formatLocalDate(windowStart);
 
   let totalSpent = 0;
   for (const txn of transactions) {

@@ -107,7 +107,7 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
                       const overspendAmt =
                         paceOverspend > 0 ? paceOverspend : Math.abs(cat.balance);
                       const overspendLabel =
-                        paceOverspend > 0 ? 'over last 2 weeks' : 'in category';
+                        paceOverspend > 0 ? `over last ${LOOKBACK_DAYS} days` : 'in category';
                       const catKey = `${cat.groupName}-${cat.name}`;
                       const donor = categories
                         .filter(
