@@ -30,9 +30,8 @@ export async function getCashflowSnapshot(
 
   // --- Read from cache ---
 
-  // Accounts — used for checking/credit balances and to classify scheduled transactions
+  // Accounts — used for checking balance and to classify scheduled transactions
   let checkingBalance: number | null = null;
-  let creditBalance = 0;
   const accountTypeById = new Map<string, string>();
   const checkingAccountIds = new Set<string>();
   const accountsCached = await db.cache.get('accounts');
@@ -52,11 +51,6 @@ export async function getCashflowSnapshot(
     if (checkingAccounts.length > 0) {
       checkingBalance = checkingAccounts.reduce((sum, a) => sum + milliToDollars(a.balance), 0);
     }
-    // Outstanding credit card balance — positive means money owed
-    const ccAccounts = accounts.filter(
-      (a) => a.type === 'creditCard' && !a.closed && !a.deleted && a.on_budget,
-    );
-    creditBalance = ccAccounts.reduce((sum, a) => sum + milliToDollars(a.balance), 0);
   }
 
   // Total budgeted
@@ -115,7 +109,6 @@ export async function getCashflowSnapshot(
   if (checkingBalance !== null) {
     projection = buildCashflowProjection({
       checkingBalance,
-      creditBalance,
       dailyAmount: budget?.dailyAmount ?? 0,
       today,
       lookbackDays: LOOKBACK_DAYS,

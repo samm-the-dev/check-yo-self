@@ -306,7 +306,6 @@ describe('advanceByYnabFrequency', () => {
 describe('buildCashflowProjection', () => {
   const baseParams = {
     checkingBalance: 2500,
-    creditBalance: 0,
     dailyAmount: 40,
     today: '2026-03-19',
     lookbackDays: 7,
@@ -321,30 +320,6 @@ describe('buildCashflowProjection', () => {
     expect(todayEntry).toBeDefined();
     expect(todayEntry!.balance).toBe(2500);
     expect(todayEntry!.checkingBalance).toBe(2500);
-  });
-
-  it('offsets committed line by credit balance at today anchor', () => {
-    const result = buildCashflowProjection({
-      ...baseParams,
-      creditBalance: 800,
-    });
-    const todayEntry = result.find((e) => e.date === '2026-03-19');
-    expect(todayEntry).toBeDefined();
-    // Checking stays at actual balance; committed reflects outstanding CC debt
-    expect(todayEntry!.checkingBalance).toBe(2500);
-    expect(todayEntry!.balance).toBe(2500 - 800);
-  });
-
-  it('credit balance offset carries through future days', () => {
-    const result = buildCashflowProjection({
-      ...baseParams,
-      creditBalance: 800,
-    });
-    // Tomorrow: committed = (2500 - 800) - 40 = 1660, checking = 2500
-    const tomorrow = result.find((e) => e.date === '2026-03-20');
-    expect(tomorrow).toBeDefined();
-    expect(tomorrow!.balance).toBeCloseTo(1660);
-    expect(tomorrow!.checkingBalance).toBe(2500);
   });
 
   it('subtracts dailyAmount from committed balance only', () => {
