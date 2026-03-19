@@ -1,16 +1,18 @@
 import { useState } from 'react';
 import { ChevronDown, ExternalLink } from 'lucide-react';
 import { formatCurrency, todayISO, cn } from '@/lib/utils';
-import { computePaceOverspend, computeCoverageDays } from '@/lib/budget-math';
+import {
+  computePaceOverspend,
+  computeCoverageDays,
+  LOOKBACK_DAYS,
+  LOOKAHEAD_DAYS,
+} from '@/lib/budget-math';
 import type { FlexibleCategoryDaily } from '@/types/budget';
 
-/** Window: 7 days back + 14 days forward = 21 days total */
-const LOOKBACK = 7;
-const LOOKAHEAD = 14;
-const WINDOW = LOOKBACK + LOOKAHEAD;
+const WINDOW = LOOKBACK_DAYS + LOOKAHEAD_DAYS;
 
-/** Today marker position: 7/21 = ~33% from the left */
-const TODAY_PERCENT = (LOOKBACK / WINDOW) * 100;
+/** Today marker position as percentage from the left */
+const TODAY_PERCENT = (LOOKBACK_DAYS / WINDOW) * 100;
 
 interface CategoryBreakdownProps {
   categories: FlexibleCategoryDaily[];
@@ -52,7 +54,7 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
               dailyBudget > 0 && cat.spentThisWeek > 0 ? cat.spentThisWeek / dailyBudget : 0;
             const overspent = cat.balance < 0 || daysConsumed >= WINDOW;
             // Fill maps consumed days onto the 21-day timeline:
-            // 0 days = empty, LOOKBACK (7) = at today marker, WINDOW (21) = full
+            // 0 days = empty, LOOKBACK_DAYS = at today marker, WINDOW = full
             const coverFill = overspent ? 1 : daysConsumed / WINDOW;
 
             return (
@@ -99,7 +101,7 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
                       const paceOverspend = computePaceOverspend(
                         cat.spentThisWeek,
                         dailyBudget,
-                        LOOKBACK,
+                        LOOKBACK_DAYS,
                       );
                       // Use pace-based overspend when available, fall back to balance deficit
                       const overspendAmt =
@@ -139,11 +141,11 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
                       </a>
                     )}
                   </div>
-                ) : daysConsumed > LOOKBACK ? (
+                ) : daysConsumed > LOOKBACK_DAYS ? (
                   <p className="text-muted-foreground mt-1 text-xs">
                     Should cover through{' '}
                     {formatCoverDate(
-                      computeCoverageDays(cat.balance, cat.spentThisWeek, LOOKAHEAD),
+                      computeCoverageDays(cat.balance, cat.spentThisWeek, LOOKAHEAD_DAYS),
                     )}
                   </p>
                 ) : (

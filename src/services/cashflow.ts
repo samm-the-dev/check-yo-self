@@ -7,15 +7,12 @@ import {
   buildCashflowProjection,
   computeSpendingVelocity,
   materializeFutureEvents,
+  LOOKBACK_DAYS,
+  LOOKAHEAD_DAYS,
   type TransactionInput,
   type ScheduledTransactionInput,
 } from '@/lib/budget-math';
 import { milliToDollars } from '@/services/ynab';
-
-/** Days of history to show before today */
-const LOOKBACK_DAYS = 14;
-/** Days of projection to show after today */
-const LOOKAHEAD_DAYS = 14;
 
 /**
  * Build a cashflow snapshot with past actuals + future projection.
