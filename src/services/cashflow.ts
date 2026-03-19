@@ -1,4 +1,4 @@
-import * as ynab from 'ynab';
+import type * as ynab from 'ynab';
 import { db } from '@/db';
 import { todayISO } from '@/lib/utils';
 import type { CashflowSnapshot } from '@/types/cashflow';
@@ -10,15 +10,12 @@ import {
   type TransactionInput,
   type ScheduledTransactionInput,
 } from '@/lib/budget-math';
+import { milliToDollars } from '@/services/ynab';
 
 /** Days of history to show before today */
 const LOOKBACK_DAYS = 7;
 /** Days of projection to show after today */
 const LOOKAHEAD_DAYS = 14;
-
-function milliToDollars(milliunits: number): number {
-  return ynab.utils.convertMilliUnitsToCurrencyAmount(milliunits, 2);
-}
 
 /**
  * Build a cashflow snapshot with past actuals + future projection.

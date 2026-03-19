@@ -19,8 +19,10 @@
  *
  * All exported functions are pure (deterministic, no side effects) except when
  * callers omit optional date parameters — those fall back to the system clock
- * via _todayISO(). No React, no Dexie, no YNAB SDK. Numbers in, numbers out.
+ * via todayISO(). No React, no Dexie, no YNAB SDK. Numbers in, numbers out.
  */
+
+import { todayISO } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Input types (decoupled from YNAB SDK types)
@@ -130,7 +132,7 @@ export function computeFlexibleBreakdown(
   totalDailyAmount: number,
   today?: string,
 ): FlexibleBreakdownResult[] {
-  const todayStr = today ?? _todayISO();
+  const todayStr = today ?? todayISO();
   const weekAgo = new Date(todayStr + 'T00:00:00');
   weekAgo.setDate(weekAgo.getDate() - 7);
   const weekAgoStr = weekAgo.toISOString().slice(0, 10);
@@ -535,13 +537,4 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
   }
 
   return projection;
-}
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-function _todayISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }

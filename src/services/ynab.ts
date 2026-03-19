@@ -272,7 +272,7 @@ export async function syncYnabData(force = false): Promise<void> {
 }
 
 /** Convert YNAB milliunits to dollars */
-function milliToDollars(milliunits: number): number {
+export function milliToDollars(milliunits: number): number {
   return ynab.utils.convertMilliUnitsToCurrencyAmount(milliunits, 2);
 }
 
