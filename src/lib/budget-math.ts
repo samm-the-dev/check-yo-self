@@ -55,6 +55,8 @@ export interface CategoryInput {
   goalDisplay?: { amount: number; cadence: 'weekly' | 'monthly' };
   /** True if the YNAB goal is snoozed */
   goalSnoozed?: boolean;
+  /** YNAB-computed shortfall: how much more needs to be budgeted to meet the goal */
+  goalUnderFunded?: number;
 }
 
 export interface TransactionInput {
@@ -87,6 +89,7 @@ export interface FlexibleBreakdownResult {
   weeklyTarget?: number;
   goalDisplay?: { amount: number; cadence: 'weekly' | 'monthly' };
   goalSnoozed?: boolean;
+  goalUnderFunded?: number;
   dailyAmount: number;
   windowAmount: number;
   spentInWindow: number;
@@ -189,6 +192,7 @@ export function computeFlexibleBreakdown(
       weeklyTarget: cat.weeklyTarget,
       goalDisplay: cat.goalDisplay,
       goalSnoozed: cat.goalSnoozed,
+      goalUnderFunded: cat.goalUnderFunded,
       dailyAmount: catDailyAmount,
       windowAmount: catWindowAmount,
       spentInWindow: windowSpentByCategory.get(cat.name) ?? 0,

@@ -27,6 +27,8 @@ export interface FlexibleCategoryDaily {
   goalDisplay?: { amount: number; cadence: 'weekly' | 'monthly' };
   /** True if the YNAB goal is snoozed */
   goalSnoozed?: boolean;
+  /** YNAB-computed shortfall: how much more needs to be budgeted to meet the goal */
+  goalUnderFunded?: number;
   /** Target-derived or balance-derived daily rate */
   dailyAmount: number;
   /** Window budget (dailyAmount * LOOKBACK_DAYS) */

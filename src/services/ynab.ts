@@ -337,6 +337,10 @@ export async function getDailyBudgetSnapshot(
         weeklyTarget,
         goalDisplay,
         goalSnoozed: cat.goal_snoozed_at != null,
+        goalUnderFunded:
+          cat.goal_under_funded != null && cat.goal_under_funded > 0
+            ? milliToDollars(cat.goal_under_funded)
+            : undefined,
       });
     }
   }

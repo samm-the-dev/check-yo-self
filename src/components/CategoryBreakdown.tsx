@@ -152,24 +152,13 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
                 </div>
               </div>
               {(() => {
-                // Budget vs target warning: is this month's budget enough to sustain the goal?
-                // YNAB budgets monthly; weekly goals need 2 occurrences per month
-                const monthlyTarget = cat.goalDisplay
-                  ? cat.goalDisplay.cadence === 'weekly'
-                    ? cat.goalDisplay.amount * 2
-                    : cat.goalDisplay.amount
-                  : 0;
-                const underfunded =
-                  cat.goalDisplay &&
-                  cat.goalDisplay.amount > 0 &&
-                  !cat.goalSnoozed &&
-                  cat.budgeted < monthlyTarget;
-                const shortfall = monthlyTarget - cat.budgeted;
-                const warningEl = underfunded ? (
-                  <span className="text-warning text-[10px]">
-                    Budget {formatCurrency(shortfall)} under target
-                  </span>
-                ) : null;
+                // YNAB-computed shortfall: how much more needs to be budgeted to meet the goal
+                const warningEl =
+                  cat.goalUnderFunded != null && cat.goalUnderFunded > 0 && !cat.goalSnoozed ? (
+                    <span className="text-warning text-[10px]">
+                      Budget {formatCurrency(cat.goalUnderFunded)} under target
+                    </span>
+                  ) : null;
 
                 if (overspent) {
                   const paceOverspend = computePaceOverspend(
