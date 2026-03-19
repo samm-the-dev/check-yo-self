@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy — Check Yo Self</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 2rem 1rem;
+      background: #0f172a;
+      color: #e2e8f0;
+      line-height: 1.7;
+    }
+    h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+    h2 { font-size: 1.1rem; margin-top: 2rem; }
+    p, li { font-size: 0.925rem; color: #94a3b8; }
+    a { color: #38bdf8; }
+    .updated { font-size: 0.8rem; color: #64748b; margin-bottom: 2rem; }
+    ul { padding-left: 1.25rem; }
+  </style>
+</head>
+<body>
+  <h1>Privacy Policy</h1>
+  <p class="updated">Last updated: March 19, 2026</p>
+
+  <h2>What Check Yo Self Does</h2>
+  <p>
+    Check Yo Self is a personal budgeting app that reads your
+    <a href="https://www.ynab.com" target="_blank" rel="noopener noreferrer">YNAB</a>
+    budget data to show you a daily spending number. It is a client-side
+    Progressive Web App (PWA) with no backend server.
+  </p>
+
+  <h2>Data We Access</h2>
+  <p>
+    Check Yo Self connects to the YNAB API with <strong>read-only</strong>
+    access. We request the minimum permissions needed: your budget categories,
+    account balances, transactions, and scheduled transactions. We cannot
+    create, modify, or delete any data in your YNAB account.
+  </p>
+
+  <h2>How Your Data Is Handled</h2>
+  <ul>
+    <li>
+      <strong>Stored on your device only.</strong> All budget data is cached
+      locally in your browser (IndexedDB) to reduce API calls. It is never
+      sent to any server operated by us.
+    </li>
+    <li>
+      <strong>No backend, no analytics, no tracking.</strong> Check Yo Self
+      runs entirely in your browser. There is no server-side component that
+      receives, processes, or stores your data.
+    </li>
+    <li>
+      <strong>OAuth token.</strong> Your YNAB access token is stored in
+      your browser's localStorage. It is only sent to YNAB's API servers
+      (<code>api.ynab.com</code>) to fetch your budget data.
+    </li>
+    <li>
+      <strong>No third-party sharing.</strong> Your YNAB data is never
+      shared with, sold to, or passed to any third party.
+    </li>
+  </ul>
+
+  <h2>Data Retention</h2>
+  <p>
+    Cached data remains in your browser until you disconnect your YNAB
+    account or clear your browser data. Disconnecting from the Settings
+    page removes your access token, category tier preferences, and all
+    cached YNAB budget data immediately. Other local settings (such as
+    reserve amount) are not removed on disconnect.
+  </p>
+
+  <h2>Data Deletion</h2>
+  <p>
+    You can delete YNAB-related data at any time by disconnecting
+    your account in Settings. This clears your access token, category
+    tier preferences, and all cached YNAB data from your browser.
+    Other local settings (such as reserve amount) remain until you
+    clear your browser data. You
+    can also revoke Check Yo Self's access from your
+    <a href="https://app.ynab.com/settings" target="_blank" rel="noopener">YNAB account settings</a>.
+    If you'd like to request confirmation that your data has been removed,
+    contact us at the email below.
+  </p>
+
+  <h2>Security</h2>
+  <p>
+    Check Yo Self is served over HTTPS. Your YNAB credentials are never
+    shared with this app — you authenticate directly on YNAB's website
+    via OAuth. The access token is stored only in your browser and
+    transmitted only to YNAB's API over encrypted connections.
+  </p>
+
+  <h2>Contact</h2>
+  <p>
+    If you have questions about this privacy policy or want to request
+    data deletion, email
+    <a href="mailto:privacy@samm-the.dev">privacy@samm-the.dev</a>.
+  </p>
+</body>
+</html>

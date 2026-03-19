@@ -1,6 +1,6 @@
 import { useBudget } from '@/hooks/useBudget';
 import type { TransactionSummary } from '@/types/budget';
-import { getCategoryTiers, getPlanId } from '@/services/ynab';
+import { getCategoryTiers, getResolvedPlanId } from '@/services/ynab';
 import { formatCurrency, todayISO, cn } from '@/lib/utils';
 import { BudgetGate } from '@/components/BudgetGate';
 import { CategoryBreakdown } from '@/components/CategoryBreakdown';
@@ -31,7 +31,7 @@ export function DashboardPage() {
   // Month-specific key so it re-prompts each month
   const nextMonthKey = `cys-next-month-nudge-${today.getFullYear()}-${String(today.getMonth() + 2).padStart(2, '0')}`;
   const nextMonthNudgeDismissed = localStorage.getItem(nextMonthKey) === 'true';
-  const planId = getPlanId() ?? '';
+  const planId = getResolvedPlanId();
 
   // Next month's name for the nudge
   const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1).toLocaleDateString(
@@ -64,14 +64,16 @@ export function DashboardPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <a
-            href={`https://app.ynab.com/${planId}/budget`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs transition-colors"
-          >
-            YNAB <ExternalLink className="h-3 w-3" />
-          </a>
+          {planId && (
+            <a
+              href={`https://app.ynab.com/${planId}/budget`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-xs transition-colors"
+            >
+              YNAB <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
           <button
             onClick={refresh}
             disabled={syncing}
@@ -117,14 +119,18 @@ export function DashboardPage() {
           <div className="flex items-center gap-2">
             <CalendarClock className="text-muted-foreground h-4 w-4 shrink-0" />
             <p className="text-muted-foreground text-sm">
-              <a
-                href={`https://app.ynab.com/${planId}/accounts`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:underline"
-              >
-                Set up scheduled transactions
-              </a>{' '}
+              {planId ? (
+                <a
+                  href={`https://app.ynab.com/${planId}/accounts`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  Set up scheduled transactions
+                </a>
+              ) : (
+                <span className="text-primary">Set up scheduled transactions</span>
+              )}{' '}
               in YNAB so the coach can see upcoming bills.{' '}
               <a
                 href="https://support.ynab.com/en_us/scheduled-transactions-a-guide-BygrAIFA9"
@@ -153,14 +159,18 @@ export function DashboardPage() {
             <CalendarClock className="text-muted-foreground h-4 w-4 shrink-0" />
             <p className="text-muted-foreground text-sm">
               Your forecast extends into {nextMonth}.{' '}
-              <a
-                href={`https://app.ynab.com/${planId}/budget`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:underline"
-              >
-                Set up {nextMonth}'s budget
-              </a>{' '}
+              {planId ? (
+                <a
+                  href={`https://app.ynab.com/${planId}/budget`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  Set up {nextMonth}'s budget
+                </a>
+              ) : (
+                <span className="text-primary">Set up {nextMonth}'s budget</span>
+              )}{' '}
               in YNAB for accurate projections.
             </p>
           </div>

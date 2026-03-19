@@ -14,14 +14,102 @@ import { todayISO } from '@/lib/utils';
 const TOKEN_KEY = 'cys-ynab-token';
 const PLAN_KEY = 'cys-ynab-plan-id';
 const TIERS_KEY = 'cys-category-tiers';
+const STATE_KEY = 'cys-oauth-state';
 
-/** Get or set the YNAB Personal Access Token */
-export function getYnabToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
+// ---------------------------------------------------------------------------
+// OAuth helpers (Implicit Grant)
+// ---------------------------------------------------------------------------
+
+/** Read the YNAB OAuth Client ID from env — throws if missing */
+function getYnabClientId(): string {
+  const id = import.meta.env.VITE_YNAB_CLIENT_ID;
+  if (!id) throw new Error('VITE_YNAB_CLIENT_ID is not set — cannot build OAuth URL');
+  return id;
 }
 
-export function setYnabToken(token: string): void {
+/** Build the redirect URI for the current environment */
+function getRedirectUri(): string {
+  return window.location.origin + import.meta.env.BASE_URL;
+}
+
+/** Generate a cryptographic random state value and store it for CSRF validation */
+function generateOAuthState(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  const state = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+  sessionStorage.setItem(STATE_KEY, state);
+  return state;
+}
+
+/** Build the YNAB OAuth authorize URL (Implicit Grant) */
+export function buildAuthUrl(): string {
+  const params = new URLSearchParams({
+    client_id: getYnabClientId(),
+    redirect_uri: getRedirectUri(),
+    response_type: 'token',
+    scope: 'read-only',
+    state: generateOAuthState(),
+  });
+  return `https://app.ynab.com/oauth/authorize?${params.toString()}`;
+}
+
+/**
+ * Check the URL hash for an OAuth access_token (redirect callback).
+ * Validates the state parameter to prevent CSRF attacks.
+ * If valid, stores the token in localStorage and clears the hash.
+ * Returns the token string if extracted, null otherwise.
+ */
+export function extractTokenFromHash(): string | null {
+  const hash = window.location.hash;
+  if (!hash.includes('access_token')) return null;
+
+  const params = new URLSearchParams(hash.replace(/^#/, ''));
+
+  // Validate state parameter to prevent CSRF / login-injection attacks
+  const returnedState = params.get('state');
+  const expectedState = sessionStorage.getItem(STATE_KEY);
+  sessionStorage.removeItem(STATE_KEY);
+
+  if (!returnedState || returnedState !== expectedState) {
+    // State mismatch — reject the token and clean up
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+    return null;
+  }
+
+  const token = params.get('access_token');
+  if (!token) return null;
+
   localStorage.setItem(TOKEN_KEY, token);
+  // With default plan selection enabled in the YNAB OAuth app, the user
+  // picks their budget on YNAB's consent screen. We use "default" as the
+  // plan ID for API calls — YNAB resolves it server-side. The real UUID
+  // is resolved on the first sync for deep links.
+  localStorage.setItem(PLAN_KEY, 'default');
+  // Clear the hash without triggering a navigation
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+  return token;
+}
+
+/** Redirect the browser to YNAB's OAuth consent page */
+export function initiateLogin(): void {
+  window.location.href = buildAuthUrl();
+}
+
+/** Clear token, plan, tiers, and cached data (sign out) */
+export async function logout(): Promise<void> {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(PLAN_KEY);
+  localStorage.removeItem(TIERS_KEY);
+  // Clear cached YNAB data from IndexedDB
+  await db.cache.clear();
+}
+
+// ---------------------------------------------------------------------------
+// Token access (used internally + by other modules)
+// ---------------------------------------------------------------------------
+
+/** Get the stored YNAB access token */
+export function getYnabToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
 }
 
 export function clearYnabToken(): void {
@@ -31,6 +119,12 @@ export function clearYnabToken(): void {
 /** Get or set the selected budget (plan) ID */
 export function getPlanId(): string | null {
   return localStorage.getItem(PLAN_KEY);
+}
+
+/** Returns the resolved plan UUID, or null if still "default" (unresolved) */
+export function getResolvedPlanId(): string | null {
+  const id = getPlanId();
+  return id && id !== 'default' ? id : null;
 }
 
 export function setPlanId(id: string): void {
@@ -78,12 +172,29 @@ async function writeCache(key: string, data: unknown): Promise<void> {
   });
 }
 
-/** Fetch the user's budgets (plans) for initial setup */
-export async function fetchPlans(): Promise<{ id: string; name: string }[]> {
-  const client = getClient();
-  if (!client) return [];
-  const response = await client.plans.getPlans();
-  return response.data.plans.map((p) => ({ id: p.id, name: p.name }));
+/**
+ * Check if an error is a YNAB 401 (token revoked / invalid).
+ * If so, clear the stored token so the app returns to login.
+ */
+function isUnauthorized(err: unknown): boolean {
+  if (err && typeof err === 'object' && 'error' in err) {
+    const ynabErr = err as { error: { id: string } };
+    if (ynabErr.error?.id === '401') return true;
+  }
+  return false;
+}
+
+/** Callback invoked when a 401 is detected — set by App.tsx */
+let onUnauthorized: (() => void) | null = null;
+
+/** Register a callback for 401 events (token revoked) */
+export function setOnUnauthorized(cb: () => void): void {
+  onUnauthorized = cb;
+}
+
+function handleUnauthorized(): void {
+  clearYnabToken();
+  onUnauthorized?.();
 }
 
 /** Sync all YNAB data needed for the dashboard. Respects debounce unless force=true. */
@@ -134,7 +245,23 @@ export async function syncYnabData(force = false): Promise<void> {
     );
   }
 
-  await Promise.allSettled(tasks);
+  const results = await Promise.allSettled(tasks);
+  for (const result of results) {
+    if (result.status === 'rejected' && isUnauthorized(result.reason)) {
+      handleUnauthorized();
+      return;
+    }
+  }
+
+  // Resolve "default" plan ID to the real UUID (needed for YNAB deep links)
+  if (planId === 'default') {
+    try {
+      const resp = await client.plans.getPlanById('default');
+      setPlanId(resp.data.plan.id);
+    } catch {
+      // Non-critical — deep links will just not work until next sync
+    }
+  }
 }
 
 /** Convert YNAB milliunits to dollars */
@@ -235,14 +362,14 @@ function buildNecessityGate(
     (cat) => tiers[cat.id] === 'necessity' && cat.budgeted === 0,
   );
 
-  const planId = getPlanId() ?? '';
+  const planId = getResolvedPlanId();
   const now = new Date();
   const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
   return {
     blocked: unbudgetedNecessities.length > 0,
     unbudgetedNecessities,
-    ynabBudgetLink: `https://app.ynab.com/${planId}/budget/${month}`,
+    ynabBudgetLink: planId ? `https://app.ynab.com/${planId}/budget/${month}` : null,
   };
 }
 

@@ -32,14 +32,16 @@ export function BudgetGate({ gate }: BudgetGateProps) {
         ))}
       </ul>
 
-      <a
-        href={gate.ynabBudgetLink}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="bg-warning text-warning-foreground hover:bg-warning/90 mt-4 inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
-      >
-        Open in YNAB <ExternalLink className="h-3.5 w-3.5" />
-      </a>
+      {gate.ynabBudgetLink && (
+        <a
+          href={gate.ynabBudgetLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="bg-warning text-warning-foreground hover:bg-warning/90 mt-4 inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-colors"
+        >
+          Open in YNAB <ExternalLink className="h-3.5 w-3.5" />
+        </a>
+      )}
     </section>
   );
 }
