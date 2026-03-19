@@ -2,6 +2,7 @@ import { useBudget } from '@/hooks/useBudget';
 import type { TransactionSummary } from '@/types/budget';
 import { getCategoryTiers, getResolvedPlanId } from '@/services/ynab';
 import { formatCurrency, todayISO, cn } from '@/lib/utils';
+import { LOOKAHEAD_DAYS } from '@/lib/budget-math';
 import { BudgetGate } from '@/components/BudgetGate';
 import { CategoryBreakdown } from '@/components/CategoryBreakdown';
 import { CashflowChart } from '@/components/CashflowChart';
@@ -38,7 +39,9 @@ export function DashboardPage() {
     'en-US',
     { month: 'long' },
   );
-  const windowCrossesMonth = budget && budget.daysRemaining <= 14;
+  const calendarDaysLeft =
+    new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate() - today.getDate() + 1;
+  const windowCrossesMonth = budget && calendarDaysLeft <= LOOKAHEAD_DAYS;
 
   if (!connected) {
     return (
@@ -181,6 +184,34 @@ export function DashboardPage() {
           >
             &times;
           </button>
+        </div>
+      )}
+
+      {/* Ready to Assign nudge */}
+      {budget && budget.readyToAssign != null && budget.readyToAssign > 0 && (
+        <div className="border-primary/30 bg-primary/5 flex items-center justify-between rounded-lg border px-4 py-3">
+          <div className="flex items-center gap-2">
+            <CalendarClock className="text-primary h-4 w-4 shrink-0" />
+            <p className="text-muted-foreground text-sm">
+              <span className="text-primary font-semibold">
+                {formatCurrency(budget.readyToAssign)}
+              </span>{' '}
+              ready to assign.{' '}
+              {planId ? (
+                <a
+                  href={`https://app.ynab.com/${planId}/budget`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  Distribute in YNAB
+                </a>
+              ) : (
+                <span className="text-primary">Distribute in YNAB</span>
+              )}{' '}
+              to keep pace tracking accurate.
+            </p>
+          </div>
         </div>
       )}
 

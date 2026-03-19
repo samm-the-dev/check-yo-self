@@ -111,19 +111,19 @@ All budget computation lives in `budget-math.ts` as pure functions — no React,
 ### Mental Model
 
 - YNAB owns all category balances. CYS never does its own budgeting math.
-- `totalAvailable` = sum of flexible category balances > 0 (necessities excluded).
-- `dailyAmount` = `totalAvailable / daysRemaining` (including today).
+- `totalAvailable` = sum of flexible category spending envelopes (necessities excluded). Categories with a YNAB weekly/monthly spending goal contribute their goal-derived envelope; categories without a goal contribute their positive balance.
+- `dailyAmount` = `totalAvailable / LOOKAHEAD_DAYS` (rolling 14-day horizon, month-agnostic).
 - `windowAmount` = `dailyAmount * LOOKBACK_DAYS` (same rate, expressed per-window).
-- Cashflow projection anchors on today's checking balance. Past days are reconstructed from actual transactions. Future days subtract spending velocity (14-day rolling avg of actual flex outflows, falling back to `dailyAmount` when no data exists) and apply scheduled transactions (income +, bills −).
-- CC payment transfers are included in cashflow — they represent real checking outflows.
+- The daily budget guardrail is intentionally decoupled from calendar months. YNAB resets category balances monthly (so `totalAvailable` naturally reflects what's left to spend), but the rate at which you spend it is distributed over a fixed rolling window — no instability at month boundaries.
+- Cashflow projection anchors on today's checking balance. Past days are reconstructed from actual transactions. Future days subtract spending velocity (14-day rolling avg of actual flex outflows, falling back to `dailyAmount` when no data exists) and apply only `hitsChecking` scheduled transactions.
+- Only `hitsChecking` events affect cashflow — CC-billed charges are excluded because they manifest as CC payment transfers when they actually hit checking. This avoids double-counting.
 - The 14-day lookahead continues the spending velocity past month-end as a best estimate.
 
 ### Key Functions
 
 | Function                   | Purpose                                        |
 | -------------------------- | ---------------------------------------------- |
-| `computeDaysRemaining`     | Days left in month including today (floor 1)   |
-| `computeDailyAmount`       | `totalAvailable / daysRemaining`               |
+| `computeDailyAmount`       | `totalAvailable / LOOKAHEAD_DAYS`              |
 | `computeTotalAvailable`    | Sum flexible categories with positive balance  |
 | `computeFlexibleBreakdown` | Per-category daily/weekly amounts, spending    |
 | `computePaceOverspend`     | Spending vs expected pace over lookback window |

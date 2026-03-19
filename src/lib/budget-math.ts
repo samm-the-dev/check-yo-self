@@ -3,17 +3,20 @@
  *
  * Mental model:
  * - YNAB owns all category balances. CYS never does its own budgeting math.
- * - totalAvailable = sum of flexible category balances > 0 (necessity excluded).
- * - dailyAmount = totalAvailable / daysRemaining (including today).
+ * - totalAvailable = sum of flexible category spending envelopes (necessity excluded).
+ *   Categories with a YNAB weekly/monthly spending goal contribute their goal-derived
+ *   envelope; categories without a goal contribute their positive balance.
+ * - dailyAmount = totalAvailable / LOOKAHEAD_DAYS (rolling horizon, month-agnostic).
  *   Used as the budget guardrail on the dashboard and for per-category pace.
  * - windowAmount = dailyAmount * LOOKBACK_DAYS (same rate, expressed per-window).
  * - spendingVelocity = 14-day rolling average of actual flex outflows.
  *   Used for the cashflow committed-line drawdown (descriptive, not prescriptive).
  * - Cashflow projection anchors on today's checking balance. Past days are
  *   reconstructed from actual transactions. Future days subtract spendingVelocity
- *   (flex spend only) and apply scheduled transactions (income +, bills −).
- * - CC payment transfers are included in cashflow — they represent real checking
- *   outflows even though YNAB models them as inter-account transfers.
+ *   (flex spend only) and apply only hitsChecking scheduled transactions.
+ * - Only hitsChecking events affect both lines — CC-billed charges are excluded
+ *   because they manifest as CC payment transfers when they actually hit checking.
+ *   This avoids double-counting.
  * - The 14-day lookahead may cross a month boundary; the spending velocity
  *   continues past month-end as a best-guess estimate of ongoing spending.
  *
@@ -45,6 +48,15 @@ export interface CategoryInput {
   budgeted: number;
   activity: number;
   tier: 'flexible' | 'necessity' | undefined;
+  /** Weekly spending target from YNAB goal (dollars, normalized to weekly).
+   *  When set, overrides balance-derived dailyBudget for pace/coverage. */
+  weeklyTarget?: number;
+  /** Original YNAB goal amount and cadence for display purposes */
+  goalDisplay?: { amount: number; cadence: 'weekly' | 'monthly' };
+  /** True if the YNAB goal is snoozed */
+  goalSnoozed?: boolean;
+  /** YNAB-computed shortfall: how much more needs to be budgeted to meet the goal */
+  goalUnderFunded?: number;
 }
 
 export interface TransactionInput {
@@ -73,6 +85,11 @@ export interface FlexibleBreakdownResult {
   name: string;
   groupName: string;
   balance: number;
+  budgeted: number;
+  weeklyTarget?: number;
+  goalDisplay?: { amount: number; cadence: 'weekly' | 'monthly' };
+  goalSnoozed?: boolean;
+  goalUnderFunded?: number;
   dailyAmount: number;
   windowAmount: number;
   spentInWindow: number;
@@ -85,9 +102,9 @@ export interface CashflowEntry {
   date: string;
   label: string;
   amount: number;
-  /** Committed balance: checking minus accumulated spending velocity drawdown */
+  /** Projected balance: checking minus accumulated spending velocity drawdown */
   balance: number;
-  /** Cash-in-bank balance: only moves on scheduled events that directly hit checking */
+  /** Committed balance: only moves on hitsChecking scheduled events (no daily drawdown) */
   checkingBalance: number;
   type: 'income' | 'bill';
   dayEvents?: { label: string; amount: number; type: 'income' | 'bill' }[];
@@ -97,32 +114,27 @@ export interface CashflowEntry {
 // Core computations
 // ---------------------------------------------------------------------------
 
-/**
- * Compute days remaining in the month, including today. Floors at 1.
- * @param year - full year (e.g. 2026)
- * @param month - 0-indexed month (0=Jan, 2=Mar)
- * @param dayOfMonth - current day of month (1-31)
- */
-export function computeDaysRemaining(year: number, month: number, dayOfMonth: number): number {
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  return Math.max(1, daysInMonth - dayOfMonth + 1);
-}
-
-/** dailyAmount = totalAvailable / daysRemaining */
-export function computeDailyAmount(totalAvailable: number, daysRemaining: number): number {
-  if (daysRemaining <= 0) return totalAvailable;
-  return totalAvailable / daysRemaining;
+/** dailyAmount = totalAvailable / LOOKAHEAD_DAYS (rolling horizon, month-agnostic) */
+export function computeDailyAmount(totalAvailable: number): number {
+  return totalAvailable / LOOKAHEAD_DAYS;
 }
 
 /**
- * Sum of all flexible category balances > 0.
- * Negative balances are excluded (not subtracted).
- * Necessity categories are excluded.
+ * Sum of all flexible category spending envelopes.
+ *
+ * Categories with a weekly target contribute `(weeklyTarget / 7) * LOOKAHEAD_DAYS`
+ * regardless of current balance, so that `computeDailyAmount(totalAvailable)` equals
+ * the sum of per-category daily amounts. Categories without a target contribute
+ * their positive balance (negative balances excluded). Necessity categories are
+ * always excluded.
  */
 export function computeTotalAvailable(categories: CategoryInput[]): number {
   let total = 0;
   for (const cat of categories) {
-    if (cat.tier === 'flexible' && cat.balance > 0) {
+    if (cat.tier !== 'flexible') continue;
+    if (cat.weeklyTarget != null) {
+      total += (cat.weeklyTarget / 7) * LOOKAHEAD_DAYS;
+    } else if (cat.balance > 0) {
       total += cat.balance;
     }
   }
@@ -136,7 +148,6 @@ export function computeTotalAvailable(categories: CategoryInput[]): number {
 export function computeFlexibleBreakdown(
   categories: CategoryInput[],
   transactions: TransactionInput[],
-  daysRemaining: number,
   totalDailyAmount: number,
   today?: string,
 ): FlexibleBreakdownResult[] {
@@ -168,7 +179,8 @@ export function computeFlexibleBreakdown(
   const flexCats = categories.filter((c) => c.tier === 'flexible');
 
   return flexCats.map((cat) => {
-    const catDailyAmount = cat.balance / Math.max(1, daysRemaining);
+    const catDailyAmount =
+      cat.weeklyTarget != null ? cat.weeklyTarget / 7 : cat.balance / LOOKAHEAD_DAYS;
     const catSpentToday = spentTodayByCategory.get(cat.name) ?? 0;
     const catWindowAmount = catDailyAmount * LOOKBACK_DAYS;
 
@@ -176,6 +188,11 @@ export function computeFlexibleBreakdown(
       name: cat.name,
       groupName: cat.groupName,
       balance: cat.balance,
+      budgeted: cat.budgeted,
+      weeklyTarget: cat.weeklyTarget,
+      goalDisplay: cat.goalDisplay,
+      goalSnoozed: cat.goalSnoozed,
+      goalUnderFunded: cat.goalUnderFunded,
       dailyAmount: catDailyAmount,
       windowAmount: catWindowAmount,
       spentInWindow: windowSpentByCategory.get(cat.name) ?? 0,
@@ -245,17 +262,25 @@ export function computePaceOverspend(
 }
 
 /**
- * Estimate how many days a category balance will last at the current
- * spend rate. Capped at LOOKAHEAD_DAYS.
+ * How many days of the 28-day window has spending covered?
+ *
+ * Spending *is* coverage — a grocery run today covers meals for the next week.
+ * daysConsumed = spentInWindow / dailyBudget where dailyBudget = balance / LOOKAHEAD_DAYS.
+ *
+ * 0 = no spending (bar empty). LOOKBACK_DAYS (14) = exactly on pace (bar at
+ * today marker). > LOOKBACK_DAYS = ahead of pace (bar past today, spending
+ * covers future days). Capped at LOOKBACK_DAYS + LOOKAHEAD_DAYS (28).
  */
 export function computeCoverageDays(
   balance: number,
   spentInWindow: number,
-  lookahead = LOOKAHEAD_DAYS,
+  dailyBudgetOverride?: number,
 ): number {
-  if (balance <= 0 || spentInWindow <= 0) return lookahead;
-  const dailyRate = spentInWindow / LOOKBACK_DAYS;
-  return Math.min(Math.floor(balance / dailyRate), lookahead);
+  if (spentInWindow <= 0) return 0;
+  const dailyBudget = dailyBudgetOverride ?? balance / LOOKAHEAD_DAYS;
+  if (dailyBudget <= 0) return LOOKBACK_DAYS + LOOKAHEAD_DAYS;
+  const consumed = spentInWindow / dailyBudget;
+  return Math.min(consumed, LOOKBACK_DAYS + LOOKAHEAD_DAYS);
 }
 
 // ---------------------------------------------------------------------------
@@ -389,20 +414,21 @@ export function materializeFutureEvents(
  * Build a cashflow projection: past actuals + today anchor + future drawdown.
  *
  * Produces two balance series per day:
- * - `balance` (committed): subtracts projectedDailySpend + all scheduled events.
- *   projectedDailySpend reflects actual spending velocity (14-day rolling avg
- *   of flex outflows), so the committed line shows where the user is heading
- *   based on real behavior rather than budget targets.
- * - `checkingBalance` (cash-in-bank): only moves on scheduled events where
- *   `hitsChecking` is true — transactions that will concretely move money
- *   in/out of checking (direct debits, income, account transfers).
+ * - `checkingBalance` (committed): only moves on hitsChecking scheduled events —
+ *   transactions that will concretely move money in/out of checking (direct debits,
+ *   income, account transfers). No daily drawdown.
+ * - `balance` (projected): subtracts projectedDailySpend each day + hitsChecking
+ *   scheduled events. projectedDailySpend reflects actual spending velocity
+ *   (14-day rolling avg of flex outflows), so the projected line shows where
+ *   the user is heading based on real behavior rather than budget targets.
+ *
+ * Both lines exclude non-hitsChecking events (e.g., CC-billed charges) since
+ * those manifest as CC payment transfers when they actually hit checking.
  *
  * Past days: both lines are identical (transactions already cleared).
  * Today: both lines anchor at checkingBalance.
  * Future days: lines diverge as daily flex spending accumulates on the
- * committed line while checking only moves on discrete scheduled events.
- *
- * projectedDailySpend continues past month-end as a best estimate of ongoing spending.
+ * projected line while committed only moves on discrete scheduled events.
  */
 export function buildCashflowProjection(params: CashflowParams): CashflowEntry[] {
   const {
@@ -526,8 +552,8 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
     const events = futureByDate.get(dateStr);
     if (events) {
       for (const ev of events) {
-        futureBalance += ev.amount;
         if (ev.hitsChecking) {
+          futureBalance += ev.amount;
           futureCheckingBalance += ev.amount;
         }
       }

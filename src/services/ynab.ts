@@ -10,10 +10,10 @@ import type {
 } from '@/types/budget';
 import { todayISO } from '@/lib/utils';
 import {
-  computeDaysRemaining,
   computeDailyAmount,
   computeTotalAvailable,
   computeFlexibleBreakdown,
+  LOOKAHEAD_DAYS,
   advanceByYnabFrequency,
   type CategoryInput,
 } from '@/lib/budget-math';
@@ -282,12 +282,11 @@ export async function getDailyBudgetSnapshot(
 ): Promise<DailyBudgetSnapshot | null> {
   const categoryGroups = await readCache<ynab.CategoryGroupWithCategories[]>('categories');
   const transactions = await readCache<ynab.TransactionDetail[]>('transactions');
+  const monthDetail = await readCache<ynab.MonthDetail>('month');
 
   if (!categoryGroups || !transactions) return null;
 
   const today = todayISO();
-  const now = new Date();
-  const daysRemaining = computeDaysRemaining(now.getFullYear(), now.getMonth(), now.getDate());
 
   const hasTiers = tiers && Object.keys(tiers).length > 0;
 
@@ -312,6 +311,21 @@ export async function getDailyBudgetSnapshot(
         budgeted,
         activity,
       });
+      // Extract spending target from YNAB "Needed for Spending" (NEED) goals only.
+      // Other goal types (MF, TB, TBD) are funding/savings goals, not spending pace.
+      let weeklyTarget: number | undefined;
+      let goalDisplay: CategoryInput['goalDisplay'];
+      if (cat.goal_type === 'NEED' && cat.goal_target != null && cat.goal_target > 0) {
+        const targetDollars = milliToDollars(cat.goal_target);
+        if (cat.goal_cadence === 2) {
+          weeklyTarget = targetDollars;
+          goalDisplay = { amount: targetDollars, cadence: 'weekly' };
+        } else if (cat.goal_cadence === 1 && cat.goal_cadence_frequency === 1) {
+          weeklyTarget = (targetDollars * 12) / 52;
+          goalDisplay = { amount: targetDollars, cadence: 'monthly' };
+        }
+      }
+
       categoryInputs.push({
         id: cat.id,
         name: cat.name,
@@ -320,6 +334,13 @@ export async function getDailyBudgetSnapshot(
         budgeted,
         activity,
         tier: hasTiers ? (tiers[cat.id] as CategoryInput['tier']) : undefined,
+        weeklyTarget,
+        goalDisplay,
+        goalSnoozed: cat.goal_snoozed_at != null,
+        goalUnderFunded:
+          cat.goal_under_funded != null && cat.goal_under_funded > 0
+            ? milliToDollars(cat.goal_under_funded)
+            : undefined,
       });
     }
   }
@@ -338,16 +359,17 @@ export async function getDailyBudgetSnapshot(
   const spentToday = Math.abs(todayTxns.reduce((sum, t) => sum + t.amount, 0));
   const spentTodayDollars = milliToDollars(spentToday);
 
-  const dailyAmount = computeDailyAmount(totalAvailable, daysRemaining);
+  const dailyAmount = computeDailyAmount(totalAvailable);
   const remainingToday = dailyAmount - spentTodayDollars;
 
   const snapshot: DailyBudgetSnapshot = {
     totalAvailable,
-    daysRemaining,
+    daysRemaining: LOOKAHEAD_DAYS,
     dailyAmount,
     spentToday: spentTodayDollars,
     remainingToday,
     categoryBreakdown: categories,
+    readyToAssign: monthDetail ? milliToDollars(monthDetail.to_be_budgeted) : null,
   };
 
   if (hasTiers) {
@@ -363,7 +385,6 @@ export async function getDailyBudgetSnapshot(
     snapshot.flexibleBreakdown = computeFlexibleBreakdown(
       categoryInputs,
       txnInputs,
-      daysRemaining,
       dailyAmount,
       today,
     );
