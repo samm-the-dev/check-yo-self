@@ -4,8 +4,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/db';
 import {
   getYnabToken,
-  setYnabToken,
-  clearYnabToken,
+  logout,
+  initiateLogin,
   getPlanId,
   setPlanId,
   fetchPlans,
@@ -14,18 +14,15 @@ import {
 } from '@/services/ynab';
 import type { CategoryTier, CategoryTierMap } from '@/types/budget';
 import type { CategoryGroupWithCategories } from 'ynab';
-import { ExternalLink, Check, Trash2, ChevronDown, Download } from 'lucide-react';
+import { Check, Trash2, ChevronDown, Download } from 'lucide-react';
 
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 export function SettingsPage() {
-  const [token, setToken] = useState(getYnabToken() ?? '');
   const [plans, setPlans] = useState<{ id: string; name: string }[]>([]);
   const [selectedPlan, setSelectedPlan] = useState(getPlanId() ?? '');
-  const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [tiers, setTiers] = useState<CategoryTierMap>(getCategoryTiers);
   const [reserve, setReserveState] = useState(() => {
     const raw = localStorage.getItem('cys-reserve-amount');
@@ -52,33 +49,6 @@ export function SettingsPage() {
     return JSON.parse(cached.data) as CategoryGroupWithCategories[];
   });
 
-  const handleSaveToken = async () => {
-    if (!token.trim()) return;
-    setLoading(true);
-    setError(null);
-    setYnabToken(token.trim());
-
-    try {
-      const fetched = await fetchPlans();
-      if (fetched.length === 0) {
-        setError('No budgets found. Check your token and try again.');
-        clearYnabToken();
-        return;
-      }
-      setPlans(fetched);
-      // Auto-select if only one budget
-      if (fetched.length === 1) {
-        setPlanId(fetched[0]!.id);
-        setSelectedPlan(fetched[0]!.id);
-      }
-    } catch {
-      setError('Could not connect to YNAB. Check your token and try again.');
-      clearYnabToken();
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSelectPlan = (id: string) => {
     setPlanId(id);
     setSelectedPlan(id);
@@ -87,10 +57,8 @@ export function SettingsPage() {
   };
 
   const handleDisconnect = () => {
-    clearYnabToken();
-    setToken('');
-    setPlans([]);
-    setSelectedPlan('');
+    logout();
+    window.location.reload();
   };
 
   const handleTierChange = (categoryId: string, tier: CategoryTier | 'excluded') => {
@@ -164,34 +132,16 @@ export function SettingsPage() {
         ) : (
           <div className="space-y-3">
             <p className="text-muted-foreground text-sm">
-              Enter your YNAB Personal Access Token to connect. You can create one in{' '}
-              <a
-                href="https://app.ynab.com/settings/developer"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary inline-flex items-center gap-1 underline underline-offset-2"
-              >
-                YNAB Settings <ExternalLink className="h-3 w-3" />
-              </a>
+              Connect your YNAB account to start tracking your daily budget.
             </p>
-            <input
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="Paste your Personal Access Token"
-              className="border-input bg-background placeholder:text-muted-foreground focus:ring-ring w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:outline-none"
-            />
             <button
-              onClick={handleSaveToken}
-              disabled={loading || !token.trim()}
-              className="bg-primary text-primary-foreground hover:bg-primary-hover rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50"
+              onClick={() => initiateLogin()}
+              className="bg-primary text-primary-foreground hover:bg-primary-hover rounded-lg px-4 py-2 text-sm font-medium transition-colors"
             >
-              {loading ? 'Connecting...' : 'Connect'}
+              Sign in with YNAB
             </button>
           </div>
         )}
-
-        {error && <p className="text-destructive text-sm">{error}</p>}
 
         {/* Budget selection (if multiple) */}
         {plans.length > 1 && (
