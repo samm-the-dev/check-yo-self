@@ -13,7 +13,7 @@ const TODAY_PERCENT = (LOOKBACK / WINDOW) * 100;
 
 interface CategoryBreakdownProps {
   categories: FlexibleCategoryDaily[];
-  planId: string;
+  planId: string | null;
 }
 
 function coverageDays(balance: number, spentThisWeek: number): number {

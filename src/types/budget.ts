@@ -10,8 +10,8 @@ export interface NecessityGateStatus {
   blocked: boolean;
   /** Necessity categories with zero budgeted */
   unbudgetedNecessities: CategoryBalance[];
-  /** Deep link to YNAB budget for current month */
-  ynabBudgetLink: string;
+  /** Deep link to YNAB budget for current month (null until plan UUID resolves) */
+  ynabBudgetLink: string | null;
 }
 
 /** Per-category budget breakdown for flexible categories */

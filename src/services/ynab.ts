@@ -121,6 +121,12 @@ export function getPlanId(): string | null {
   return localStorage.getItem(PLAN_KEY);
 }
 
+/** Returns the resolved plan UUID, or null if still "default" (unresolved) */
+export function getResolvedPlanId(): string | null {
+  const id = getPlanId();
+  return id && id !== 'default' ? id : null;
+}
+
 export function setPlanId(id: string): void {
   localStorage.setItem(PLAN_KEY, id);
 }
@@ -189,22 +195,6 @@ export function setOnUnauthorized(cb: () => void): void {
 function handleUnauthorized(): void {
   clearYnabToken();
   onUnauthorized?.();
-}
-
-/** Fetch the user's budgets (plans) for initial setup */
-export async function fetchPlans(): Promise<{ id: string; name: string }[]> {
-  const client = getClient();
-  if (!client) return [];
-  try {
-    const response = await client.plans.getPlans();
-    return response.data.plans.map((p) => ({ id: p.id, name: p.name }));
-  } catch (err) {
-    if (isUnauthorized(err)) {
-      handleUnauthorized();
-      return [];
-    }
-    throw err;
-  }
 }
 
 /** Sync all YNAB data needed for the dashboard. Respects debounce unless force=true. */
@@ -372,14 +362,14 @@ function buildNecessityGate(
     (cat) => tiers[cat.id] === 'necessity' && cat.budgeted === 0,
   );
 
-  const planId = getPlanId() ?? '';
+  const planId = getResolvedPlanId();
   const now = new Date();
   const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
   return {
     blocked: unbudgetedNecessities.length > 0,
     unbudgetedNecessities,
-    ynabBudgetLink: `https://app.ynab.com/${planId}/budget/${month}`,
+    ynabBudgetLink: planId ? `https://app.ynab.com/${planId}/budget/${month}` : null,
   };
 }
 
