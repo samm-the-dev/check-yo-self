@@ -358,11 +358,11 @@ describe('buildCashflowProjection', () => {
     expect(mar25!.balance).toBeCloseTo(5060);
   });
 
-  it('excludes CC payment transfers from cashflow outflows', () => {
+  it('includes CC payment transfers in cashflow (real checking outflow)', () => {
     const result = buildCashflowProjection({
       ...baseParams,
       scheduledTransactions: [
-        // This is a CC payment transfer — should NOT reduce balance
+        // CC payment transfer — reduces checking balance
         makeScheduled({
           dateNext: '2026-03-22',
           amount: -500,
@@ -373,11 +373,10 @@ describe('buildCashflowProjection', () => {
       ],
     });
 
-    // March 22 should only show dailyAmount drawdown, not the CC transfer
+    // March 22: 2500 - 40*3 (daily drawdown) - 500 (CC payment) = 1880
     const mar22 = result.find((e) => e.date === '2026-03-22');
     expect(mar22).toBeDefined();
-    // 2500 - 40*3 = 2380 (no CC payment deducted)
-    expect(mar22!.balance).toBeCloseTo(2380);
+    expect(mar22!.balance).toBeCloseTo(1880);
   });
 
   it('reconstructs past balances from actual transactions', () => {
@@ -397,9 +396,8 @@ describe('buildCashflowProjection', () => {
     expect(mar18!.balance).toBeCloseTo(2500); // After the -50 txn, should match today - today's txns
   });
 
-  it('handles month boundary in 14-day lookahead', () => {
-    // March 19 + 14 = April 2. The projection should not blindly
-    // apply March's dailyAmount past March 31.
+  it('continues dailyAmount drawdown past month boundary', () => {
+    // March 25 + 14 = April 8. dailyAmount continues as best-guess estimate.
     const result = buildCashflowProjection({
       ...baseParams,
       today: '2026-03-25',
@@ -407,11 +405,13 @@ describe('buildCashflowProjection', () => {
       lookaheadDays: 14,
     });
 
-    // The projection extends into April — verify it has entries past month-end
     const aprilEntries = result.filter((e) => e.date > '2026-03-31');
     expect(aprilEntries.length).toBeGreaterThan(0);
-    // NOTE: Ideally dailyAmount would reset at month boundary, but at minimum
-    // the projection should not crash or produce nonsensical balances
+    // April 1: balance should reflect continued drawdown past month-end
+    const apr1 = result.find((e) => e.date === '2026-04-01');
+    expect(apr1).toBeDefined();
+    // 7 days of drawdown (Mar 26–Apr 1) = 280
+    expect(apr1!.balance).toBeCloseTo(2500 - 40 * 7);
   });
 
   it('materializes recurring scheduled transactions across the window', () => {

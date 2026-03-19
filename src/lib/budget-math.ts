@@ -9,11 +9,10 @@
  * - Cashflow projection anchors on today's checking balance. Past days are
  *   reconstructed from actual transactions. Future days subtract dailyAmount
  *   (flex spend only) and apply scheduled transactions (income +, bills −).
- * - CC payment transfers (transferAccountId is set) are excluded from cashflow
- *   because they're inter-account movements, not real outflows.
- * - The 14-day lookahead may cross a month boundary; dailyAmount applies only
- *   through month-end, then drops to 0 for days in the next month (since YNAB
- *   resets and we don't have next month's budget data).
+ * - CC payment transfers are included in cashflow — they represent real checking
+ *   outflows even though YNAB models them as inter-account transfers.
+ * - The 14-day lookahead may cross a month boundary; dailyAmount continues past
+ *   month-end as a best-guess estimate of ongoing spending.
  *
  * All functions are pure — no React, no Dexie, no YNAB SDK. Numbers in, numbers out.
  */
@@ -276,9 +275,11 @@ type DayEvent = { label: string; amount: number; type: 'income' | 'bill' };
  * - Past balance is reconstructed by reversing actual transactions from today's
  *   checking balance, then walking forward.
  * - Future days subtract dailyAmount (flex spend) and add scheduled events.
- * - CC payment transfers (transferAccountId !== null) are excluded.
- * - dailyAmount applies only through the end of the current month; days in the
- *   next month use 0 for daily drawdown (we don't have next month's budget).
+ * - CC payment transfers are included — they represent real checking outflows.
+ *   (Note: this may slightly double-count if flex spending is on credit cards,
+ *   since dailyAmount also approximates that spending. The chart will be
+ *   conservative mid-cycle but correct around CC payment dates.)
+ * - dailyAmount continues past month-end as a best estimate of ongoing spending.
  */
 export function buildCashflowProjection(params: CashflowParams): CashflowEntry[] {
   const {
@@ -299,11 +300,6 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
   horizonDate.setDate(horizonDate.getDate() + lookaheadDays);
   const horizonStr = horizonDate.toISOString().slice(0, 10);
 
-  // Month-end for daily drawdown cutoff
-  const todayDate = new Date(today + 'T00:00:00');
-  const monthEnd = new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 0);
-  const monthEndStr = monthEnd.toISOString().slice(0, 10);
-
   // --- Past transactions by date ---
   const pastByDate = new Map<string, DayEvent[]>();
   for (const t of transactions) {
@@ -318,12 +314,9 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
     }
   }
 
-  // --- Future scheduled events (excluding CC transfers) ---
+  // --- Future scheduled events ---
   const futureByDate = new Map<string, DayEvent[]>();
   for (const t of scheduledTransactions) {
-    // Skip CC payment transfers — they're inter-account, not real outflows
-    if (t.transferAccountId) continue;
-
     const event: DayEvent = {
       label: t.payeeName,
       amount: t.amount,
@@ -418,9 +411,7 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
   while (fd.toISOString().slice(0, 10) <= horizonStr) {
     const dateStr = fd.toISOString().slice(0, 10);
 
-    // Only apply daily drawdown within the current month
-    const drawdown = dateStr <= monthEndStr ? dailyAmount : 0;
-    futureBalance -= drawdown;
+    futureBalance -= dailyAmount;
 
     const events = futureByDate.get(dateStr);
     if (events) {
@@ -432,7 +423,7 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
     projection.push({
       date: dateStr,
       label: dateStr,
-      amount: -drawdown,
+      amount: -dailyAmount,
       balance: futureBalance,
       type: 'bill',
       dayEvents: events,

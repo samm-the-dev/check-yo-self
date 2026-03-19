@@ -115,8 +115,8 @@ All budget computation lives in `budget-math.ts` as pure functions — no React,
 - `dailyAmount` = `totalAvailable / daysRemaining` (including today).
 - `weeklyAmount` = `dailyAmount * 7` (same rate, expressed per-week).
 - Cashflow projection anchors on today's checking balance. Past days are reconstructed from actual transactions. Future days subtract `dailyAmount` (flex spend only) and apply scheduled transactions (income +, bills −).
-- CC payment transfers are excluded from cashflow (they're inter-account movements).
-- The 14-day lookahead stops applying daily drawdown past month-end (YNAB resets).
+- CC payment transfers are included in cashflow — they represent real checking outflows.
+- The 14-day lookahead continues dailyAmount past month-end as a best estimate.
 
 ### Key Functions
 
