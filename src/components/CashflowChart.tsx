@@ -10,10 +10,10 @@ import {
   ReferenceArea,
   Area,
 } from 'recharts';
-import { TrendingUp } from 'lucide-react';
+import { TrendingUp, ChevronDown, Info } from 'lucide-react';
 import { getCashflowSnapshot } from '@/services/cashflow';
-import { formatCurrency, todayISO } from '@/lib/utils';
-import type { CashflowEvent } from '@/types/cashflow';
+import { formatCurrency, todayISO, cn } from '@/lib/utils';
+import type { CashflowEvent, CashflowSnapshot } from '@/types/cashflow';
 import type { DailyBudgetSnapshot } from '@/types/budget';
 
 interface CashflowChartProps {
@@ -34,6 +34,7 @@ function CustomTooltip({
 }) {
   if (!active || !payload?.[0]) return null;
   const ev = payload[0].payload;
+  const showDual = ev.checkingBalance !== ev.balance;
   return (
     <div className="border-border bg-card rounded-lg border px-3 py-2 shadow-lg">
       <p className="text-xs font-medium">{formatDate(ev.date)}</p>
@@ -46,7 +47,14 @@ function CustomTooltip({
           </span>
         </p>
       ))}
-      <p className="mt-0.5 text-sm font-semibold">{formatCurrency(ev.balance)}</p>
+      {showDual ? (
+        <div className="mt-0.5 space-y-0.5">
+          <p className="text-sm font-semibold">{formatCurrency(ev.checkingBalance)}</p>
+          <p className="text-muted-foreground text-xs">Committed {formatCurrency(ev.balance)}</p>
+        </div>
+      ) : (
+        <p className="mt-0.5 text-sm font-semibold">{formatCurrency(ev.balance)}</p>
+      )}
     </div>
   );
 }
@@ -66,14 +74,14 @@ function EventDot(props: { cx?: number; cy?: number; payload?: CashflowEvent }) 
 }
 
 export function CashflowChart({ budget }: CashflowChartProps) {
-  const [projection, setProjection] = useState<CashflowEvent[]>([]);
+  const [snapshot, setSnapshot] = useState<CashflowSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     getCashflowSnapshot(budget).then((snap) => {
       if (!cancelled) {
-        setProjection(snap.projection);
+        setSnapshot(snap);
         setLoading(false);
       }
     });
@@ -82,6 +90,8 @@ export function CashflowChart({ budget }: CashflowChartProps) {
     };
   }, [budget]);
 
+  const projection = snapshot?.projection ?? [];
+
   const reserveAmount = (() => {
     const raw = localStorage.getItem('cys-reserve-amount');
     return raw ? parseFloat(raw) : 0;
@@ -89,8 +99,9 @@ export function CashflowChart({ budget }: CashflowChartProps) {
 
   if (loading || projection.length < 2) return null;
 
-  const minBalance = Math.min(...projection.map((p) => p.balance));
-  const maxBalance = Math.max(...projection.map((p) => p.balance));
+  const allBalances = projection.flatMap((p) => [p.balance, p.checkingBalance]);
+  const minBalance = Math.min(...allBalances);
+  const maxBalance = Math.max(...allBalances);
 
   // Always include zero; show a small negative region even if balance stays positive
   const negativeBuffer = maxBalance * 0.08;
@@ -106,8 +117,12 @@ export function CashflowChart({ budget }: CashflowChartProps) {
         <TrendingUp className="h-3.5 w-3.5" />
         Projected cashflow
       </h2>
+      <CashflowMethodology
+        scheduledCount={snapshot?.scheduledCount ?? 0}
+        hasRecurringIncome={snapshot?.hasRecurringIncome ?? false}
+      />
       <div
-        className="border-border bg-card text-muted-foreground borderpx-3 rounded-xl [&_.recharts-surface]:!outline-none [&_.recharts-wrapper]:!outline-none"
+        className="border-border bg-card text-muted-foreground rounded-xl border px-3 [&_.recharts-surface]:!outline-none [&_.recharts-wrapper]:!outline-none"
         onFocus={(e) => e.target.blur()}
       >
         <ResponsiveContainer width="100%" height={180}>
@@ -200,11 +215,23 @@ export function CashflowChart({ budget }: CashflowChartProps) {
               fillOpacity={1}
               stroke="none"
             />
-            {/* Balance area fill with gradient */}
+            {/* Budget area fill with gradient (anchored to committed balance) */}
             <Area type="monotone" dataKey="balance" fill="url(#cashflowGradient)" stroke="none" />
+            {/* Committed balance — ghost dashed line */}
             <Line
               type="monotone"
               dataKey="balance"
+              stroke="hsl(152 60% 50%)"
+              strokeWidth={1.5}
+              strokeDasharray="4 3"
+              strokeOpacity={0.4}
+              dot={false}
+              activeDot={false}
+            />
+            {/* Cash-in-bank — solid line */}
+            <Line
+              type="monotone"
+              dataKey="checkingBalance"
               stroke="hsl(152 60% 50%)"
               strokeWidth={2}
               dot={<EventDot />}
@@ -214,5 +241,76 @@ export function CashflowChart({ budget }: CashflowChartProps) {
         </ResponsiveContainer>
       </div>
     </section>
+  );
+}
+
+function CashflowMethodology({
+  scheduledCount,
+  hasRecurringIncome,
+}: {
+  scheduledCount: number;
+  hasRecurringIncome: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const coverageIssues: string[] = [];
+  if (scheduledCount === 0) {
+    coverageIssues.push(
+      'No scheduled transactions found. Mark recurring bills and income as scheduled in YNAB for an accurate projection.',
+    );
+  } else {
+    if (!hasRecurringIncome) {
+      coverageIssues.push(
+        'No recurring income detected. Add your paychecks as scheduled transactions in YNAB.',
+      );
+    }
+  }
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(!open)}
+        className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-xs transition-colors"
+      >
+        <Info className="h-3 w-3" />
+        How this works
+        <ChevronDown className={cn('h-3 w-3 transition-transform', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <div className="text-muted-foreground mt-2 space-y-2 text-xs leading-relaxed">
+          <p>
+            The chart shows two lines. The <strong>solid line</strong> is your checking account
+            balance — it only moves on scheduled transactions that directly hit checking (direct
+            debits, income, account transfers). The <strong>dashed line</strong> subtracts your
+            recent daily spending rate on top of that, showing what's effectively spoken for.
+          </p>
+          <p>
+            <strong>Why two lines?</strong> The spending estimate is based on your actual pace over
+            the last two weeks — it adapts as your habits change. Scheduled transactions are more
+            concrete. The solid line shows confirmed cashflow; the dashed line layers in your real
+            spending trajectory.
+          </p>
+          <p>
+            <strong>Month boundary:</strong> The spending rate stays constant past month-end. If
+            your habits change next month, the projection won't reflect that yet.
+          </p>
+          <p>
+            <strong>Accuracy depends on YNAB setup.</strong> Mark recurring bills and income as
+            scheduled transactions in YNAB — that's what drives the spikes and dips in the chart.
+            Unscheduled recurring charges won't appear in the forecast.
+          </p>
+          {coverageIssues.length > 0 && (
+            <div className="border-warning/30 bg-warning/5 rounded-md border px-3 py-2">
+              <p className="text-warning font-medium">Coverage gaps</p>
+              {coverageIssues.map((issue, i) => (
+                <p key={i} className="mt-1">
+                  {issue}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

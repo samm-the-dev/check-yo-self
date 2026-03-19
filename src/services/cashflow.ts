@@ -1,103 +1,46 @@
-import * as ynab from 'ynab';
+import type * as ynab from 'ynab';
 import { db } from '@/db';
 import { todayISO } from '@/lib/utils';
-import type { CashflowSnapshot, CashflowEvent } from '@/types/cashflow';
+import type { CashflowSnapshot } from '@/types/cashflow';
 import type { DailyBudgetSnapshot } from '@/types/budget';
+import {
+  buildCashflowProjection,
+  computeSpendingVelocity,
+  materializeFutureEvents,
+  type TransactionInput,
+  type ScheduledTransactionInput,
+} from '@/lib/budget-math';
+import { milliToDollars } from '@/services/ynab';
 
 /** Days of history to show before today */
 const LOOKBACK_DAYS = 7;
 /** Days of projection to show after today */
 const LOOKAHEAD_DAYS = 14;
 
-function milliToDollars(milliunits: number): number {
-  return ynab.utils.convertMilliUnitsToCurrencyAmount(milliunits, 2);
-}
-
-/** Advance a date by the YNAB scheduled transaction frequency */
-function advanceByYnabFrequency(
-  date: Date,
-  frequency: ynab.ScheduledTransactionDetailFrequencyEnum,
-): void {
-  switch (frequency) {
-    case 'daily':
-      date.setDate(date.getDate() + 1);
-      break;
-    case 'weekly':
-      date.setDate(date.getDate() + 7);
-      break;
-    case 'everyOtherWeek':
-      date.setDate(date.getDate() + 14);
-      break;
-    case 'twiceAMonth':
-      if (date.getDate() < 15) {
-        date.setDate(15);
-      } else {
-        date.setDate(1);
-        date.setMonth(date.getMonth() + 1);
-      }
-      break;
-    case 'every4Weeks':
-      date.setDate(date.getDate() + 28);
-      break;
-    case 'monthly':
-      date.setMonth(date.getMonth() + 1);
-      break;
-    case 'everyOtherMonth':
-      date.setMonth(date.getMonth() + 2);
-      break;
-    case 'every3Months':
-      date.setMonth(date.getMonth() + 3);
-      break;
-    case 'every4Months':
-      date.setMonth(date.getMonth() + 4);
-      break;
-    case 'twiceAYear':
-      date.setMonth(date.getMonth() + 6);
-      break;
-    case 'yearly':
-      date.setFullYear(date.getFullYear() + 1);
-      break;
-    case 'everyOtherYear':
-      date.setFullYear(date.getFullYear() + 2);
-      break;
-    default:
-      break;
-  }
-}
-
-type DayEvent = { label: string; amount: number; type: 'income' | 'bill' };
-
 /**
  * Build a cashflow snapshot with past actuals + future projection.
  *
- * - Past (LOOKBACK_DAYS): actual transactions from YNAB cache
- * - Today: current checking balance (anchor point)
- * - Future (LOOKAHEAD_DAYS): scheduled transactions (bills + income) + linear budget drawdown
+ * This is now a thin data-fetching layer. All math is in budget-math.ts.
  */
 export async function getCashflowSnapshot(
   budget?: DailyBudgetSnapshot | null,
 ): Promise<CashflowSnapshot> {
   const today = todayISO();
 
-  // Date boundaries
-  const lookbackDate = new Date(today + 'T00:00:00');
-  lookbackDate.setDate(lookbackDate.getDate() - LOOKBACK_DAYS);
-  const lookbackStr = lookbackDate.toISOString().slice(0, 10);
-
-  const horizonDate = new Date(today + 'T00:00:00');
-  horizonDate.setDate(horizonDate.getDate() + LOOKAHEAD_DAYS);
-  const horizonStr = horizonDate.toISOString().slice(0, 10);
-
   // --- Read from cache ---
 
-  // Checking balance
+  // Accounts — used for checking balance and to classify scheduled transactions
   let checkingBalance: number | null = null;
+  const checkingAccountIds = new Set<string>();
   const accountsCached = await db.cache.get('accounts');
   if (accountsCached) {
     const accounts = JSON.parse(accountsCached.data) as ynab.Account[];
     const checkingAccounts = accounts.filter(
       (a) => a.type === 'checking' && !a.closed && !a.deleted,
     );
+    for (const a of checkingAccounts) {
+      checkingAccountIds.add(a.id);
+    }
     if (checkingAccounts.length > 0) {
       checkingBalance = checkingAccounts.reduce((sum, a) => sum + milliToDollars(a.balance), 0);
     }
@@ -117,171 +60,117 @@ export async function getCashflowSnapshot(
     }
   }
 
-  // Past transactions (for lookback period)
-  const pastTransactions = await db.cache.get('transactions');
-  const pastByDate = new Map<string, DayEvent[]>();
-  if (pastTransactions) {
-    const txns = JSON.parse(pastTransactions.data) as ynab.TransactionDetail[];
+  // Convert cached transactions to budget-math inputs.
+  // allTransactions: used for spending velocity (includes CC flex spending).
+  // checkingTransactions: used for cashflow past-balance reconstruction
+  //   (only transactions that moved money in/out of checking).
+  const allTransactions: TransactionInput[] = [];
+  const checkingTransactions: TransactionInput[] = [];
+  const pastTxnsCached = await db.cache.get('transactions');
+  if (pastTxnsCached) {
+    const txns = JSON.parse(pastTxnsCached.data) as ynab.TransactionDetail[];
     for (const t of txns) {
-      if (t.date >= lookbackStr && t.date <= today) {
-        const list = pastByDate.get(t.date) ?? [];
-        list.push({
-          label: t.payee_name ?? 'Unknown',
-          amount: milliToDollars(t.amount), // negative for outflows
-          type: t.amount < 0 ? 'bill' : 'income',
-        });
-        pastByDate.set(t.date, list);
+      const input: TransactionInput = {
+        date: t.date,
+        amount: milliToDollars(t.amount),
+        categoryName: t.category_name ?? 'Uncategorized',
+        payeeName: t.payee_name ?? 'Unknown',
+      };
+      allTransactions.push(input);
+
+      // Only include transactions owned by a checking account for past-balance
+      // reconstruction. Transfer counterparts on non-checking accounts are
+      // excluded to avoid double-counting (YNAB records both sides).
+      if (checkingAccountIds.has(t.account_id)) {
+        checkingTransactions.push(input);
       }
     }
   }
 
-  // Scheduled transactions — both bills (negative) and income (positive)
+  // Convert scheduled transactions to budget-math inputs
+  // hitsChecking: true if the transaction is on a checking account or transfers to one.
+  // Non-checking-account charges only affect the committed balance line.
+  const scheduledTransactions: ScheduledTransactionInput[] = [];
   const scheduledCached = await db.cache.get('scheduled');
-  const futureByDate = new Map<string, DayEvent[]>();
   if (scheduledCached) {
     const scheduled = JSON.parse(scheduledCached.data) as ynab.ScheduledTransactionDetail[];
     for (const t of scheduled) {
-      const dollars = milliToDollars(t.amount);
-      const event: DayEvent = {
-        label: t.payee_name ?? 'Unknown',
-        amount: dollars, // already signed: negative = bill, positive = income
-        type: t.amount < 0 ? 'bill' : 'income',
-      };
-
-      if (t.frequency === 'never') {
-        if (t.date_next > today && t.date_next <= horizonStr) {
-          const list = futureByDate.get(t.date_next) ?? [];
-          list.push(event);
-          futureByDate.set(t.date_next, list);
-        }
-      } else {
-        const d = new Date(t.date_next + 'T00:00:00');
-        while (d.toISOString().slice(0, 10) <= today) {
-          advanceByYnabFrequency(d, t.frequency);
-        }
-        let dateStr = d.toISOString().slice(0, 10);
-        while (dateStr <= horizonStr) {
-          const list = futureByDate.get(dateStr) ?? [];
-          list.push({ ...event });
-          futureByDate.set(dateStr, list);
-          advanceByYnabFrequency(d, t.frequency);
-          dateStr = d.toISOString().slice(0, 10);
-        }
-      }
+      const onChecking = checkingAccountIds.has(t.account_id);
+      const transfersToChecking =
+        t.transfer_account_id != null && checkingAccountIds.has(t.transfer_account_id);
+      // YNAB signs amounts from the source account's perspective.
+      // When a transfer targets checking from a non-checking account (e.g., CC
+      // payment scheduled on the CC side), negate to get the checking perspective.
+      const baseAmount = milliToDollars(t.amount);
+      const amount = !onChecking && transfersToChecking ? -baseAmount : baseAmount;
+      scheduledTransactions.push({
+        dateNext: t.date_next,
+        amount,
+        frequency: t.frequency,
+        payeeName: t.payee_name ?? 'Unknown',
+        categoryName: t.category_name ?? 'Uncategorized',
+        transferAccountId: t.transfer_account_id ?? null,
+        hitsChecking: onChecking || transfersToChecking,
+      });
     }
   }
 
-  // --- Build projection ---
-  const projection: CashflowEvent[] = [];
+  // Compute spending velocity from actual flex outflows (14-day rolling avg).
+  // Falls back to budget-derived dailyAmount when no transaction data exists.
+  const flexNames = new Set(budget?.flexibleBreakdown?.map((c) => c.name) ?? []);
+  const velocity = computeSpendingVelocity(allTransactions, flexNames, today);
+  const projectedDailySpend = velocity > 0 ? velocity : (budget?.dailyAmount ?? 0);
 
+  // Delegate projection to budget-math
+  let projection: CashflowSnapshot['projection'] = [];
   if (checkingBalance !== null) {
-    const dailySpend = budget?.dailyAmount ?? 0;
-
-    // PAST: reconstruct balances from actual transactions
-    const sortedPastDates: string[] = [];
-    const d = new Date(lookbackStr + 'T00:00:00');
-    while (d.toISOString().slice(0, 10) < today) {
-      sortedPastDates.push(d.toISOString().slice(0, 10));
-      d.setDate(d.getDate() + 1);
-    }
-
-    // Compute starting balance by reversing all transactions from lookback..today
-    let startBalance = checkingBalance;
-    for (const dateStr of sortedPastDates) {
-      const events = pastByDate.get(dateStr);
-      if (events) {
-        for (const ev of events) {
-          startBalance -= ev.amount;
-        }
-      }
-    }
-    const todayEvents = pastByDate.get(today);
-    if (todayEvents) {
-      for (const ev of todayEvents) {
-        startBalance -= ev.amount;
-      }
-    }
-
-    // Walk forward applying actual transactions
-    let pastBalance = startBalance;
-    for (const dateStr of sortedPastDates) {
-      const events = pastByDate.get(dateStr);
-      if (events) {
-        for (const ev of events) {
-          pastBalance += ev.amount;
-        }
-      }
-      projection.push({
-        date: dateStr,
-        label: dateStr,
-        amount: 0,
-        balance: pastBalance,
-        type: 'bill',
-        dayEvents: events,
-      });
-    }
-
-    // TODAY: anchor point
-    projection.push({
-      date: today,
-      label: 'Today',
-      amount: 0,
-      balance: checkingBalance,
-      type: 'bill',
-      dayEvents: todayEvents,
+    projection = buildCashflowProjection({
+      checkingBalance,
+      projectedDailySpend,
+      today,
+      lookbackDays: LOOKBACK_DAYS,
+      lookaheadDays: LOOKAHEAD_DAYS,
+      transactions: checkingTransactions,
+      scheduledTransactions,
     });
-
-    // FUTURE: linear drawdown + scheduled events
-    let futureBalance = checkingBalance;
-    const fd = new Date(today + 'T00:00:00');
-    fd.setDate(fd.getDate() + 1);
-
-    while (fd.toISOString().slice(0, 10) <= horizonStr) {
-      const dateStr = fd.toISOString().slice(0, 10);
-      futureBalance -= dailySpend;
-
-      const events = futureByDate.get(dateStr);
-      if (events) {
-        for (const ev of events) {
-          futureBalance += ev.amount;
-        }
-      }
-
-      projection.push({
-        date: dateStr,
-        label: dateStr,
-        amount: -dailySpend,
-        balance: futureBalance,
-        type: 'bill',
-        dayEvents: events,
-      });
-
-      fd.setDate(fd.getDate() + 1);
-    }
   }
 
-  // Cashflow warning: bills due before next income exceed checking
+  // Cashflow warning: checking-account bills due before next income exceed balance.
   let cashflowWarning = false;
   if (checkingBalance !== null) {
-    // Find the next income event
-    const sortedDates = [...futureByDate.keys()].sort();
+    const horizonDate = new Date(today + 'T00:00:00');
+    horizonDate.setDate(horizonDate.getDate() + LOOKAHEAD_DAYS);
+    const horizonStr = horizonDate.toISOString().slice(0, 10);
+
+    const checkingEvents = materializeFutureEvents(scheduledTransactions, today, horizonStr).filter(
+      (e) => e.hitsChecking,
+    );
+
+    const sortedDates = [...new Set(checkingEvents.map((e) => e.date))].sort();
     const nextIncomeDate = sortedDates.find((date) =>
-      futureByDate.get(date)?.some((e) => e.type === 'income'),
+      checkingEvents.some((e) => e.date === date && e.amount > 0),
     );
     if (nextIncomeDate) {
-      const billsBefore = sortedDates
-        .filter((date) => date < nextIncomeDate)
-        .flatMap((date) => futureByDate.get(date) ?? [])
-        .filter((e) => e.type === 'bill')
+      const billsBefore = checkingEvents
+        .filter((e) => e.date < nextIncomeDate && e.amount < 0)
         .reduce((sum, e) => sum + Math.abs(e.amount), 0);
       cashflowWarning = billsBefore > checkingBalance;
     }
   }
 
+  // Coverage signals for methodology display
+  const scheduledCount = scheduledTransactions.length;
+  const incomeFrequencies = new Set(['never']);
+  const hasRecurringIncome = scheduledTransactions.some(
+    (t) => t.amount > 0 && !incomeFrequencies.has(t.frequency),
+  );
+
   return {
     checkingBalance,
     totalBudgeted,
     cashflowWarning,
+    scheduledCount,
+    hasRecurringIncome,
     projection,
   };
 }

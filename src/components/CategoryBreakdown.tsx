@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, ExternalLink } from 'lucide-react';
 import { formatCurrency, todayISO, cn } from '@/lib/utils';
+import { computePaceOverspend, computeCoverageDays } from '@/lib/budget-math';
 import type { FlexibleCategoryDaily } from '@/types/budget';
 
 /** Window: 7 days back + 14 days forward = 21 days total */
@@ -14,12 +15,6 @@ const TODAY_PERCENT = (LOOKBACK / WINDOW) * 100;
 interface CategoryBreakdownProps {
   categories: FlexibleCategoryDaily[];
   planId: string | null;
-}
-
-function coverageDays(balance: number, spentThisWeek: number): number {
-  if (balance <= 0 || spentThisWeek <= 0) return LOOKAHEAD;
-  const dailyRate = spentThisWeek / 7;
-  return Math.min(Math.floor(balance / dailyRate), LOOKAHEAD);
 }
 
 function formatCoverDate(daysCovered: number): string {
@@ -101,10 +96,11 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
                 {overspent ? (
                   <div className="mt-1 space-y-0.5">
                     {(() => {
-                      const paceOverspend =
-                        dailyBudget > 0
-                          ? Math.max(0, cat.spentThisWeek - dailyBudget * LOOKBACK)
-                          : cat.spentThisWeek;
+                      const paceOverspend = computePaceOverspend(
+                        cat.spentThisWeek,
+                        dailyBudget,
+                        LOOKBACK,
+                      );
                       // Use pace-based overspend when available, fall back to balance deficit
                       const overspendAmt =
                         paceOverspend > 0 ? paceOverspend : Math.abs(cat.balance);
@@ -146,7 +142,9 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
                 ) : daysConsumed > LOOKBACK ? (
                   <p className="text-muted-foreground mt-1 text-xs">
                     Should cover through{' '}
-                    {formatCoverDate(coverageDays(cat.balance, cat.spentThisWeek))}
+                    {formatCoverDate(
+                      computeCoverageDays(cat.balance, cat.spentThisWeek, LOOKAHEAD),
+                    )}
                   </p>
                 ) : (
                   <p className="text-muted-foreground mt-1 text-xs">

@@ -261,26 +261,19 @@ const MOCK_TRANSACTIONS = [
 ];
 
 /** Seed localStorage and IndexedDB so the app thinks YNAB is connected */
-async function seedAppState(
-  page: import('@playwright/test').Page,
-  { withTiers = false, withCoaching = false } = {},
-) {
+async function seedAppState(page: import('@playwright/test').Page, { withTiers = false } = {}) {
   await page.goto('/');
 
   // Seed localStorage
   await page.evaluate(
-    ({ tiers, withTiers, withCoaching }) => {
+    ({ tiers, withTiers }) => {
       localStorage.setItem('cys-ynab-token', 'fake-token');
       localStorage.setItem('cys-ynab-plan-id', 'fake-plan-id');
       if (withTiers) {
         localStorage.setItem('cys-category-tiers', JSON.stringify(tiers));
       }
-      if (withCoaching) {
-        localStorage.setItem('cys-gemini-key', 'AIza-fake-key');
-        localStorage.setItem('cys-coach-provider', 'gemini');
-      }
     },
-    { tiers: MOCK_TIERS, withTiers, withCoaching },
+    { tiers: MOCK_TIERS, withTiers },
   );
 
   // Seed IndexedDB cache
@@ -401,25 +394,4 @@ test('dashboard - no tiers nudge', async ({ page }) => {
   await page.goto('/');
   await page.waitForLoadState('networkidle');
   await page.screenshot({ path: 'e2e/screenshots/dashboard-nudge.png', fullPage: true });
-});
-
-test('dashboard - coaching check-in (no key)', async ({ page }) => {
-  await seedAppState(page, { withTiers: true });
-  await page.goto('/');
-  await page.waitForLoadState('networkidle');
-  await page.screenshot({ path: 'e2e/screenshots/dashboard-coaching-nokey.png', fullPage: true });
-});
-
-test('dashboard - coaching check-in (with key)', async ({ page }) => {
-  await seedAppState(page, { withTiers: true, withCoaching: true });
-  await page.goto('/');
-  await page.waitForLoadState('networkidle');
-  await page.screenshot({ path: 'e2e/screenshots/dashboard-coaching-ready.png', fullPage: true });
-});
-
-test('settings - coaching section', async ({ page }) => {
-  await seedAppState(page, { withTiers: true, withCoaching: true });
-  await page.goto('/settings');
-  await page.waitForLoadState('networkidle');
-  await page.screenshot({ path: 'e2e/screenshots/settings-coaching.png', fullPage: true });
 });

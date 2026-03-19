@@ -5,11 +5,18 @@ import type {
   DailyBudgetSnapshot,
   CategoryBalance,
   CategoryTierMap,
-  FlexibleCategoryDaily,
   NecessityGateStatus,
   TransactionSummary,
 } from '@/types/budget';
 import { todayISO } from '@/lib/utils';
+import {
+  computeDaysRemaining,
+  computeDailyAmount,
+  computeTotalAvailable,
+  computeFlexibleBreakdown,
+  advanceByYnabFrequency,
+  type CategoryInput,
+} from '@/lib/budget-math';
 
 const TOKEN_KEY = 'cys-ynab-token';
 const PLAN_KEY = 'cys-ynab-plan-id';
@@ -265,7 +272,7 @@ export async function syncYnabData(force = false): Promise<void> {
 }
 
 /** Convert YNAB milliunits to dollars */
-function milliToDollars(milliunits: number): number {
+export function milliToDollars(milliunits: number): number {
   return ynab.utils.convertMilliUnitsToCurrencyAmount(milliunits, 2);
 }
 
@@ -280,17 +287,15 @@ export async function getDailyBudgetSnapshot(
 
   const today = todayISO();
   const now = new Date();
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const daysRemaining = Math.max(1, daysInMonth - now.getDate() + 1);
+  const daysRemaining = computeDaysRemaining(now.getFullYear(), now.getMonth(), now.getDate());
 
   const hasTiers = tiers && Object.keys(tiers).length > 0;
 
   // Flatten categories, skip internal/hidden groups
   const categories: CategoryBalance[] = [];
-  let totalAvailable = 0;
+  const categoryInputs: CategoryInput[] = [];
 
   for (const group of categoryGroups) {
-    // Skip internal YNAB groups (credit card payments, hidden, etc.)
     if (group.hidden || group.name === 'Internal Master Category') continue;
 
     for (const cat of group.categories) {
@@ -307,25 +312,33 @@ export async function getDailyBudgetSnapshot(
         budgeted,
         activity,
       });
-
-      if (hasTiers) {
-        // Only flexible categories with positive balances feed the daily budget
-        if (tiers[cat.id] === 'flexible' && balance > 0) {
-          totalAvailable += balance;
-        }
-      } else {
-        // Legacy behavior: all positive balances
-        if (balance > 0) totalAvailable += balance;
-      }
+      categoryInputs.push({
+        id: cat.id,
+        name: cat.name,
+        groupName: group.name,
+        balance,
+        budgeted,
+        activity,
+        tier: hasTiers ? (tiers[cat.id] as CategoryInput['tier']) : undefined,
+      });
     }
   }
 
-  // Today's spending (all negative transactions)
+  // Compute totalAvailable via budget-math
+  let totalAvailable: number;
+  if (hasTiers) {
+    totalAvailable = computeTotalAvailable(categoryInputs);
+  } else {
+    // Legacy: all positive balances
+    totalAvailable = categories.reduce((sum, c) => sum + (c.balance > 0 ? c.balance : 0), 0);
+  }
+
+  // Today's spending
   const todayTxns = transactions.filter((t) => t.date === today && t.amount < 0);
   const spentToday = Math.abs(todayTxns.reduce((sum, t) => sum + t.amount, 0));
   const spentTodayDollars = milliToDollars(spentToday);
 
-  const dailyAmount = totalAvailable / daysRemaining;
+  const dailyAmount = computeDailyAmount(totalAvailable, daysRemaining);
   const remainingToday = dailyAmount - spentTodayDollars;
 
   const snapshot: DailyBudgetSnapshot = {
@@ -337,16 +350,22 @@ export async function getDailyBudgetSnapshot(
     categoryBreakdown: categories,
   };
 
-  // Tier-aware computations
   if (hasTiers) {
     snapshot.gate = buildNecessityGate(categories, tiers);
-    snapshot.flexibleBreakdown = buildFlexibleBreakdown(
-      categories,
-      tiers,
+
+    // Convert transactions to budget-math input format
+    const txnInputs = transactions.map((t) => ({
+      date: t.date,
+      amount: milliToDollars(t.amount),
+      categoryName: t.category_name ?? 'Uncategorized',
+      payeeName: t.payee_name ?? 'Unknown',
+    }));
+    snapshot.flexibleBreakdown = computeFlexibleBreakdown(
+      categoryInputs,
+      txnInputs,
       daysRemaining,
       dailyAmount,
-      todayTxns,
-      transactions,
+      today,
     );
   }
 
@@ -373,60 +392,6 @@ function buildNecessityGate(
   };
 }
 
-/** Build per-category daily breakdown for flexible categories */
-function buildFlexibleBreakdown(
-  categories: CategoryBalance[],
-  tiers: CategoryTierMap,
-  daysRemaining: number,
-  totalDailyAmount: number,
-  todayTxns: ynab.TransactionDetail[],
-  allTransactions: ynab.TransactionDetail[],
-): FlexibleCategoryDaily[] {
-  const today = todayISO();
-  const weekAgo = new Date(today + 'T00:00:00');
-  weekAgo.setDate(weekAgo.getDate() - 7);
-  const weekAgoStr = weekAgo.toISOString().slice(0, 10);
-
-  // Group today's spending by category name
-  const spentByCategory = new Map<string, number>();
-  for (const txn of todayTxns) {
-    const catName = txn.category_name ?? 'Uncategorized';
-    const current = spentByCategory.get(catName) ?? 0;
-    spentByCategory.set(catName, current + Math.abs(milliToDollars(txn.amount)));
-  }
-
-  // Group last 7 days spending by category name
-  const weeklySpentByCategory = new Map<string, number>();
-  for (const txn of allTransactions) {
-    if (txn.date >= weekAgoStr && txn.amount < 0) {
-      const catName = txn.category_name ?? 'Uncategorized';
-      const current = weeklySpentByCategory.get(catName) ?? 0;
-      weeklySpentByCategory.set(catName, current + Math.abs(milliToDollars(txn.amount)));
-    }
-  }
-
-  const flexibleCats = categories.filter((cat) => tiers[cat.id] === 'flexible');
-
-  return flexibleCats.map((cat) => {
-    const catDailyAmount = cat.balance / daysRemaining;
-    const catSpentToday = spentByCategory.get(cat.name) ?? 0;
-    // Weekly runway: how much you can spend per week to make balance last
-    const weeksRemaining = Math.max(daysRemaining / 7, 0.5);
-    const catWeeklyAmount = cat.balance / weeksRemaining;
-    return {
-      name: cat.name,
-      groupName: cat.groupName,
-      balance: cat.balance,
-      dailyAmount: catDailyAmount,
-      weeklyAmount: catWeeklyAmount,
-      spentThisWeek: weeklySpentByCategory.get(cat.name) ?? 0,
-      spentToday: catSpentToday,
-      remainingToday: catDailyAmount - catSpentToday,
-      percentOfTotal: totalDailyAmount > 0 ? catDailyAmount / totalDailyAmount : 0,
-    };
-  });
-}
-
 /** Get recent transactions (last 7 days) as summaries */
 export async function getRecentTransactions(days = 7): Promise<TransactionSummary[]> {
   const transactions = await readCache<ynab.TransactionDetail[]>('transactions');
@@ -445,59 +410,6 @@ export async function getRecentTransactions(days = 7): Promise<TransactionSummar
       category: t.category_name ?? 'Uncategorized',
       date: t.date,
     }));
-}
-
-/** Advance a date by the YNAB scheduled frequency */
-function advanceByFrequency(
-  date: Date,
-  frequency: ynab.ScheduledTransactionDetailFrequencyEnum,
-): void {
-  switch (frequency) {
-    case 'daily':
-      date.setDate(date.getDate() + 1);
-      break;
-    case 'weekly':
-      date.setDate(date.getDate() + 7);
-      break;
-    case 'everyOtherWeek':
-      date.setDate(date.getDate() + 14);
-      break;
-    case 'twiceAMonth':
-      if (date.getDate() < 15) {
-        date.setDate(15);
-      } else {
-        date.setDate(1);
-        date.setMonth(date.getMonth() + 1);
-      }
-      break;
-    case 'every4Weeks':
-      date.setDate(date.getDate() + 28);
-      break;
-    case 'monthly':
-      date.setMonth(date.getMonth() + 1);
-      break;
-    case 'everyOtherMonth':
-      date.setMonth(date.getMonth() + 2);
-      break;
-    case 'every3Months':
-      date.setMonth(date.getMonth() + 3);
-      break;
-    case 'every4Months':
-      date.setMonth(date.getMonth() + 4);
-      break;
-    case 'twiceAYear':
-      date.setMonth(date.getMonth() + 6);
-      break;
-    case 'yearly':
-      date.setFullYear(date.getFullYear() + 1);
-      break;
-    case 'everyOtherYear':
-      date.setFullYear(date.getFullYear() + 2);
-      break;
-    default:
-      // 'never' — no recurrence
-      break;
-  }
 }
 
 /**
@@ -523,15 +435,12 @@ export async function getUpcomingScheduled(days = 7): Promise<TransactionSummary
       category: t.category_name ?? 'Uncategorized',
     };
 
-    // Start from date_next
     const d = new Date(t.date_next + 'T00:00:00');
 
-    // Skip past dates before today
     while (d.toISOString().slice(0, 10) < todayStr && t.frequency !== 'never') {
-      advanceByFrequency(d, t.frequency);
+      if (!advanceByYnabFrequency(d, t.frequency)) break;
     }
 
-    // Materialize occurrences within the window
     if (t.frequency === 'never') {
       const dateStr = t.date_next;
       if (dateStr >= todayStr && dateStr <= cutoffStr) {
@@ -543,7 +452,7 @@ export async function getUpcomingScheduled(days = 7): Promise<TransactionSummary
         if (dateStr >= todayStr) {
           results.push({ ...base, date: dateStr });
         }
-        advanceByFrequency(d, t.frequency);
+        if (!advanceByYnabFrequency(d, t.frequency)) break;
         dateStr = d.toISOString().slice(0, 10);
       }
     }

@@ -1,11 +1,8 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type { YnabCache } from '@/types/ynab-cache';
-import type { CheckIn, CoachingMessage } from '@/types/check-in';
 
 const db = new Dexie('check-yo-self') as Dexie & {
   cache: EntityTable<YnabCache, 'key'>;
-  checkIns: EntityTable<CheckIn, 'id'>;
-  coachingMessages: EntityTable<CoachingMessage, 'id'>;
 };
 
 db.version(1).stores({
@@ -23,6 +20,13 @@ db.version(3).stores({
   cache: 'key',
   checkIns: 'id, date',
   coachingMessages: 'id, checkInId',
+});
+
+// v4: Remove check-in and coaching tables (moved to feature/coaching branch)
+db.version(4).stores({
+  cache: 'key',
+  checkIns: null,
+  coachingMessages: null,
 });
 
 export { db };

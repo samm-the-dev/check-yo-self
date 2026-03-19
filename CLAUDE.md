@@ -24,11 +24,14 @@ Daily budgeting PWA for a single user (Anthony). Standalone app on `apps.samm-th
 
 ### Architecture
 
-- `src/types/` — Data model types. `StoredSchedule` mirrors toolbox shared-schema. `BillStatus` aligns with schema.org `ActionStatusType`.
-- `src/db/` — Dexie database definition. Single database `check-yo-self` with five tables.
-- `src/hooks/` — React hooks. `useDailyBudget` is the core computation hook.
+- `src/types/` — Data model types. Budget types, cashflow types, YNAB cache schema.
+- `src/db/` — Dexie database definition. Single database `check-yo-self` with YNAB cache table.
+- `src/lib/budget-math.ts` — **Canonical math module.** All budget and cashflow computation lives here as pure functions, fully tested, no side effects. See `budget-math.test.ts`.
+- `src/services/ynab.ts` — YNAB OAuth, API sync, cache management. Thin layer that fetches data and delegates computation to `budget-math.ts`.
+- `src/services/cashflow.ts` — Cashflow snapshot assembly. Fetches from cache, delegates projection to `budget-math.ts`.
+- `src/hooks/` — React hooks. `useDailyBudget` drives the dashboard.
 - `src/pages/` — Route-level page components (DashboardPage, TransactionsPage, BillsPage, SettingsPage).
-- `src/components/` — Shared UI. `Layout.tsx` is the app shell with bottom tab nav.
+- `src/components/` — Shared UI. `Layout.tsx` is the app shell with bottom tab nav. `CategoryBreakdown.tsx` uses pace/coverage math from `budget-math.ts`.
 
 ### Conventions
 
@@ -36,19 +39,19 @@ Daily budgeting PWA for a single user (Anthony). Standalone app on `apps.samm-th
 - ISO dates as strings (`YYYY-MM-DD`) for Dexie indexing — same as ohm.
 - ISO timestamps for event recording (`new Date().toISOString()`).
 - `DailyBudget` is computed, not stored — derived fresh on each render.
-- Transactions are source-agnostic: `source: 'manual' | 'plaid'`. Phase 3 adds Plaid without schema changes.
 - Dark mode default, class-based toggle via `useTheme` hook.
 
 ### Phases
 
-- **Phase 1 (current):** Core MVP — manual entry, bill tracking, daily budget, Calendar notifications.
-- **Phase 2:** Claude API coaching — spending pattern detection, budget insights on check-in.
-- **Phase 3:** Plaid bank integration — auto-import transactions from Wells Fargo.
+- **Phase 1 (live):** YNAB OAuth, daily budget from category balances, category tiers (necessity/flexible), flexible breakdown with weekly pace, overspend detection with move-money recommendations, cashflow chart with 7-day lookback + 14-day lookahead, scheduled transaction materialization.
+- **Phase 2 (parked on `feature/coaching`):** AI coaching — spending pattern detection, morning/evening check-in ritual, personalized budget insights.
+- **Phase 3 (planned):** Spending trends, streak tracking, polish.
+  - TODO: Optional "show credit balance" toggle on cashflow chart — opt in to offset the committed line by outstanding CC balance. Off by default (chart focuses on checking cashflow, not debt position). Useful for users who want visibility into how CC debt affects effective cash.
 
 ### Testing
 
 Follow toolbox testing conventions. Priority:
 
-1. `useDailyBudget` computation logic (pure math, critical path)
-2. Bill instance materialization from schedule
-3. Transaction CRUD operations
+1. `budget-math.ts` computation logic — pure functions, fully tested in `budget-math.test.ts`
+2. Scheduled transaction materialization via `advanceByYnabFrequency`
+3. Cashflow projection (past reconstruction + future drawdown)
