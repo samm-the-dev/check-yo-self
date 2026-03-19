@@ -81,12 +81,8 @@ describe('deriveTierFromGoal', () => {
     expect(deriveTierFromGoal({ goalType: 'NEED', goalNeedsWholeAmount: true })).toBe('necessity');
   });
 
-  it('snoozed NEED goals still return their derived tier', () => {
-    // Snoozed flex — still contributes to daily budget
-    expect(deriveTierFromGoal({ goalType: 'NEED', goalNeedsWholeAmount: false })).toBe('flexible');
-    // Snoozed necessity — gate handles snoozed separately
-    expect(deriveTierFromGoal({ goalType: 'NEED', goalNeedsWholeAmount: true })).toBe('necessity');
-  });
+  // Note: snoozed goals keep their derived tier — deriveTierFromGoal is snooze-agnostic.
+  // The necessity gate (in ynab.ts) handles snoozed categories separately.
 
   it.each(['TB', 'TBD', 'MF', 'DEBT'])('%s goal type → undefined', (goalType) => {
     expect(deriveTierFromGoal({ goalType, goalNeedsWholeAmount: null })).toBeUndefined();

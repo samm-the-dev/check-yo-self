@@ -74,6 +74,8 @@ export interface ScheduledTransactionInput {
   frequency: string;
   payeeName: string;
   categoryName: string;
+  /** YNAB category ID — used for stable dedup (names can collide across groups) */
+  categoryId?: string;
   /** Non-null for account transfers (e.g., CC payments) */
   transferAccountId: string | null;
   /** True if this transaction directly impacts the checking account balance.

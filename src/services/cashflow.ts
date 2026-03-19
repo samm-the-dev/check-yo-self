@@ -106,6 +106,7 @@ export async function getCashflowSnapshot(
         frequency: t.frequency,
         payeeName: t.payee_name ?? 'Unknown',
         categoryName: t.category_name ?? 'Uncategorized',
+        categoryId: t.category_id ?? undefined,
         transferAccountId: t.transfer_account_id ?? null,
         hitsChecking: onChecking || transfersToChecking,
       });
@@ -120,25 +121,33 @@ export async function getCashflowSnapshot(
     const groups = JSON.parse(catCached.data) as ynab.CategoryGroupWithCategories[];
     const horizonDate = new Date(today + 'T00:00:00');
     horizonDate.setDate(horizonDate.getDate() + LOOKAHEAD_DAYS);
-    const horizonStr = horizonDate.toISOString().slice(0, 10);
+    const horizonStr = [
+      horizonDate.getFullYear(),
+      String(horizonDate.getMonth() + 1).padStart(2, '0'),
+      String(horizonDate.getDate()).padStart(2, '0'),
+    ].join('-');
 
     for (const group of groups) {
       if (group.hidden || group.name === 'Internal Master Category') continue;
       for (const cat of group.categories) {
         if (cat.hidden || cat.deleted) continue;
-        if (cat.goal_type !== 'TBD' || !cat.goal_target_date || !cat.goal_target) continue;
+        if (cat.goal_type !== 'TBD' || !cat.goal_target_date || cat.goal_target == null) continue;
 
         const targetDate = cat.goal_target_date.slice(0, 10);
         if (targetDate <= today || targetDate > horizonStr) continue;
 
-        // Dedup: skip if a scheduled transaction in same category is within ±7 days
+        // Dedup: skip if a scheduled transaction in same category is within ±7 days.
+        // Match by categoryId (stable) with name fallback for transfers (no category ID).
         const targetMs = new Date(targetDate + 'T00:00:00').getTime();
-        const hasSimilarScheduled = scheduledTransactions.some(
-          (st) =>
-            st.categoryName === cat.name &&
+        const hasSimilarScheduled = scheduledTransactions.some((st) => {
+          const sameCategory =
+            (st.categoryId && st.categoryId === cat.id) || st.categoryName === cat.name;
+          if (!sameCategory) return false;
+          return (
             Math.abs(new Date(st.dateNext + 'T00:00:00').getTime() - targetMs) <=
-              7 * 24 * 60 * 60 * 1000,
-        );
+            7 * 24 * 60 * 60 * 1000
+          );
+        });
         if (hasSimilarScheduled) continue;
 
         // Add synthetic scheduled transaction for the TBD goal
@@ -148,6 +157,7 @@ export async function getCashflowSnapshot(
           frequency: 'never',
           payeeName: `${cat.name} (goal)`,
           categoryName: cat.name,
+          categoryId: cat.id,
           transferAccountId: null,
           hitsChecking: true,
           source: 'goal',
@@ -181,7 +191,11 @@ export async function getCashflowSnapshot(
   if (checkingBalance !== null) {
     const horizonDate = new Date(today + 'T00:00:00');
     horizonDate.setDate(horizonDate.getDate() + LOOKAHEAD_DAYS);
-    const horizonStr = horizonDate.toISOString().slice(0, 10);
+    const horizonStr = [
+      horizonDate.getFullYear(),
+      String(horizonDate.getMonth() + 1).padStart(2, '0'),
+      String(horizonDate.getDate()).padStart(2, '0'),
+    ].join('-');
 
     const checkingEvents = materializeFutureEvents(scheduledTransactions, today, horizonStr).filter(
       (e) => e.hitsChecking,

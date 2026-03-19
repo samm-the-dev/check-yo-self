@@ -419,14 +419,15 @@ function buildNecessityGate(categoryInputs: CategoryInput[]): NecessityGateStatu
       (cat) =>
         cat.tier === 'necessity' &&
         !cat.goalSnoozed &&
-        cat.goalUnderFunded != null &&
-        cat.goalUnderFunded > 0,
+        // Goal-based: underfunded per YNAB. Override-without-goal fallback: unbudgeted.
+        ((cat.goalUnderFunded != null && cat.goalUnderFunded > 0) ||
+          (cat.goalUnderFunded == null && cat.budgeted === 0)),
     )
     .map((cat) => ({
       id: cat.id,
       name: cat.name,
       groupName: cat.groupName,
-      shortfall: cat.goalUnderFunded!,
+      shortfall: cat.goalUnderFunded != null && cat.goalUnderFunded > 0 ? cat.goalUnderFunded : 0,
     }));
 
   const planId = getResolvedPlanId();
