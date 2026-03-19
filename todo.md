@@ -18,5 +18,6 @@
 ## Future
 
 - [ ] AI coaching (parked on feature/coaching branch)
+  - [ ] Update privacy policy to disclose that budget data is sent to Anthropic's API for coaching
 - [ ] OG meta image for social sharing
 - [ ] "Recent transactions" total shows net (inflows dominate) — consider showing gross spend separately
