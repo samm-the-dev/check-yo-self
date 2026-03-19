@@ -183,8 +183,11 @@ export function computeFlexibleBreakdown(
 // Spending velocity
 // ---------------------------------------------------------------------------
 
-/** Default lookback window for spending velocity (days) */
-const VELOCITY_LOOKBACK = 14;
+/** Canonical lookback window used across the app (days) */
+export const LOOKBACK_DAYS = 14;
+
+/** Canonical lookahead window used across the app (days) */
+export const LOOKAHEAD_DAYS = 14;
 
 /**
  * Compute average daily spending velocity from recent flexible-category outflows.
@@ -197,7 +200,7 @@ export function computeSpendingVelocity(
   transactions: TransactionInput[],
   flexibleCategoryNames: Set<string>,
   today: string,
-  lookbackDays: number = VELOCITY_LOOKBACK,
+  lookbackDays: number = LOOKBACK_DAYS,
 ): number {
   const windowStart = new Date(today + 'T00:00:00');
   windowStart.setDate(windowStart.getDate() - lookbackDays);
