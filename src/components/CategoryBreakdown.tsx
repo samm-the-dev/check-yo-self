@@ -4,16 +4,15 @@ import { formatCurrency, todayISO, cn } from '@/lib/utils';
 import {
   computePaceOverspend,
   computeCoverageDays,
-  PACE_WINDOW_DAYS,
+  LOOKBACK_DAYS,
   LOOKAHEAD_DAYS,
 } from '@/lib/budget-math';
 import type { FlexibleCategoryDaily } from '@/types/budget';
 
-/** Timeline: 7-day lookback + 14-day lookahead = 21-day window */
-const WINDOW = PACE_WINDOW_DAYS + LOOKAHEAD_DAYS;
+const WINDOW = LOOKBACK_DAYS + LOOKAHEAD_DAYS;
 
 /** Today marker position as percentage from the left */
-const TODAY_PERCENT = (PACE_WINDOW_DAYS / WINDOW) * 100;
+const TODAY_PERCENT = (LOOKBACK_DAYS / WINDOW) * 100;
 
 interface CategoryBreakdownProps {
   categories: FlexibleCategoryDaily[];
@@ -49,13 +48,13 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
       {expanded && (
         <div className="border-border space-y-1 border-t px-4 pt-2 pb-3">
           {categories.map((cat) => {
-            // How many days of budget this week's spending has consumed
+            // How many days of budget the lookback window spending has consumed
             const dailyBudget = cat.dailyAmount;
             const daysConsumed =
-              dailyBudget > 0 && cat.spentThisWeek > 0 ? cat.spentThisWeek / dailyBudget : 0;
+              dailyBudget > 0 && cat.spentInWindow > 0 ? cat.spentInWindow / dailyBudget : 0;
             const overspent = cat.balance < 0 || daysConsumed >= WINDOW;
             // Fill maps consumed days onto the timeline:
-            // 0 days = empty, PACE_WINDOW_DAYS = at today marker, WINDOW = full
+            // 0 days = empty, LOOKBACK_DAYS = at today marker, WINDOW = full
             const coverFill = overspent ? 1 : daysConsumed / WINDOW;
 
             return (
@@ -100,14 +99,15 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
                   <div className="mt-1 space-y-0.5">
                     {(() => {
                       const paceOverspend = computePaceOverspend(
-                        cat.spentThisWeek,
+                        cat.spentInWindow,
                         dailyBudget,
-                        PACE_WINDOW_DAYS,
+                        LOOKBACK_DAYS,
                       );
                       // Use pace-based overspend when available, fall back to balance deficit
                       const overspendAmt =
                         paceOverspend > 0 ? paceOverspend : Math.abs(cat.balance);
-                      const overspendLabel = paceOverspend > 0 ? 'this week' : 'in category';
+                      const overspendLabel =
+                        paceOverspend > 0 ? 'over last 2 weeks' : 'in category';
                       const catKey = `${cat.groupName}-${cat.name}`;
                       const donor = categories
                         .filter(
@@ -142,17 +142,18 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
                       </a>
                     )}
                   </div>
-                ) : daysConsumed > PACE_WINDOW_DAYS ? (
+                ) : daysConsumed > LOOKBACK_DAYS ? (
                   <p className="text-muted-foreground mt-1 text-xs">
                     Should cover through{' '}
                     {formatCoverDate(
-                      computeCoverageDays(cat.balance, cat.spentThisWeek, LOOKAHEAD_DAYS),
+                      computeCoverageDays(cat.balance, cat.spentInWindow, LOOKAHEAD_DAYS),
                     )}
                   </p>
                 ) : (
                   <p className="text-muted-foreground mt-1 text-xs">
-                    Can spend {formatCurrency((cat.weeklyAmount - cat.spentThisWeek) / 7)} today and
-                    stay on pace
+                    Can spend{' '}
+                    {formatCurrency((cat.windowAmount - cat.spentInWindow) / LOOKBACK_DAYS)} today
+                    and stay on pace
                   </p>
                 )}
               </div>

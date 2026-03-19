@@ -21,10 +21,10 @@ export interface FlexibleCategoryDaily {
   balance: number;
   /** balance / daysRemaining */
   dailyAmount: number;
-  /** Weekly budget (dailyAmount * 7) */
-  weeklyAmount: number;
-  /** Spent in the last 7 days */
-  spentThisWeek: number;
+  /** Window budget (dailyAmount * LOOKBACK_DAYS) */
+  windowAmount: number;
+  /** Spent in the lookback window */
+  spentInWindow: number;
   /** Today's transactions in this category */
   spentToday: number;
   /** dailyAmount - spentToday */

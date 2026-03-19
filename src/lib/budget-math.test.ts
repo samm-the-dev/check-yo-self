@@ -165,34 +165,35 @@ describe('computeTotalAvailable', () => {
 // ---------------------------------------------------------------------------
 
 describe('computeFlexibleBreakdown', () => {
-  it('computes per-category daily and weekly amounts', () => {
+  it('computes per-category daily and window amounts', () => {
     const cats = [makeCategory({ id: '1', name: 'Groceries', balance: 260, tier: 'flexible' })];
     const txns: TransactionInput[] = [];
     const result = computeFlexibleBreakdown(cats, txns, 13, 20);
     expect(result).toHaveLength(1);
     expect(result[0].dailyAmount).toBeCloseTo(20); // 260 / 13
-    // weeklyAmount should equal dailyAmount * 7
-    expect(result[0].weeklyAmount).toBeCloseTo(20 * 7);
+    // windowAmount should equal dailyAmount * LOOKBACK_DAYS (14)
+    expect(result[0].windowAmount).toBeCloseTo(20 * 14);
   });
 
-  it('computes spentThisWeek from last 7 days of transactions', () => {
+  it('computes spentInWindow from last 14 days of transactions', () => {
     const cats = [makeCategory({ id: '1', name: 'Dining Out', balance: 100, tier: 'flexible' })];
     const txns: TransactionInput[] = [
       makeTransaction({ date: '2026-03-18', amount: -15, categoryName: 'Dining Out' }),
       makeTransaction({ date: '2026-03-14', amount: -25, categoryName: 'Dining Out' }),
-      // Outside 7-day window (> 7 days ago from March 19)
-      makeTransaction({ date: '2026-03-10', amount: -50, categoryName: 'Dining Out' }),
+      makeTransaction({ date: '2026-03-10', amount: -30, categoryName: 'Dining Out' }),
+      // Outside 14-day window (> 14 days ago from March 19)
+      makeTransaction({ date: '2026-03-04', amount: -50, categoryName: 'Dining Out' }),
     ];
     const result = computeFlexibleBreakdown(cats, txns, 13, 20, '2026-03-19');
-    expect(result[0].spentThisWeek).toBeCloseTo(40); // 15 + 25
+    expect(result[0].spentInWindow).toBeCloseTo(70); // 15 + 25 + 30
   });
 
-  it('weeklyAmount is consistent with dailyAmount (dailyAmount * 7)', () => {
+  it('windowAmount is consistent with dailyAmount (dailyAmount * LOOKBACK_DAYS)', () => {
     const cats = [makeCategory({ id: '1', name: 'Fun', balance: 140, tier: 'flexible' })];
     const result = computeFlexibleBreakdown(cats, [], 14, 10);
     const daily = result[0].dailyAmount;
-    const weekly = result[0].weeklyAmount;
-    expect(weekly).toBeCloseTo(daily * 7);
+    const window = result[0].windowAmount;
+    expect(window).toBeCloseTo(daily * 14);
   });
 
   it('includes negative-balance flexible categories in breakdown but not in total', () => {
@@ -209,18 +210,18 @@ describe('computeFlexibleBreakdown', () => {
 
 describe('computePaceOverspend', () => {
   it('returns overspend when spending exceeds expected pace', () => {
-    // dailyAmount=10, lookback=7: expected=70. spent=90 → overspend=20
-    const result = computePaceOverspend(90, 10, 7);
+    // dailyAmount=10, lookback=14: expected=140. spent=160 → overspend=20
+    const result = computePaceOverspend(160, 10, 14);
     expect(result).toBeCloseTo(20);
   });
 
   it('returns 0 when spending is under pace', () => {
-    const result = computePaceOverspend(50, 10, 7);
+    const result = computePaceOverspend(100, 10, 14);
     expect(result).toBe(0);
   });
 
   it('returns full spend when dailyAmount is 0', () => {
-    const result = computePaceOverspend(50, 0, 7);
+    const result = computePaceOverspend(50, 0, 14);
     expect(result).toBe(50);
   });
 });
@@ -230,23 +231,24 @@ describe('computePaceOverspend', () => {
 // ---------------------------------------------------------------------------
 
 describe('computeCoverageDays', () => {
-  it('estimates days a balance will last at weekly spend rate', () => {
-    // balance=100, spentThisWeek=70 → dailyRate=10 → coverage=10 days
-    const result = computeCoverageDays(100, 70);
-    expect(result).toBe(10);
+  it('estimates days a balance will last at current spend rate', () => {
+    // balance=100, spentInWindow=70 → dailyRate=70/14=5 → coverage=20 → capped at 14
+    expect(computeCoverageDays(100, 70)).toBe(14);
+    // balance=50, spentInWindow=70 → dailyRate=5 → coverage=10
+    expect(computeCoverageDays(50, 70)).toBe(10);
   });
 
-  it('caps at LOOKAHEAD (14) when balance outlasts the window', () => {
-    const result = computeCoverageDays(1000, 7);
+  it('caps at LOOKAHEAD_DAYS (14) when balance outlasts the window', () => {
+    const result = computeCoverageDays(1000, 14);
     expect(result).toBe(14);
   });
 
-  it('returns LOOKAHEAD when balance is 0 or negative', () => {
+  it('returns LOOKAHEAD_DAYS when balance is 0 or negative', () => {
     expect(computeCoverageDays(0, 50)).toBe(14);
     expect(computeCoverageDays(-10, 50)).toBe(14);
   });
 
-  it('returns LOOKAHEAD when no spending this week', () => {
+  it('returns LOOKAHEAD_DAYS when no spending in window', () => {
     expect(computeCoverageDays(100, 0)).toBe(14);
   });
 });

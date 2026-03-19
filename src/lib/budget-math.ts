@@ -6,7 +6,7 @@
  * - totalAvailable = sum of flexible category balances > 0 (necessity excluded).
  * - dailyAmount = totalAvailable / daysRemaining (including today).
  *   Used as the budget guardrail on the dashboard and for per-category pace.
- * - weeklyAmount = dailyAmount * 7 (same rate, just expressed per-week).
+ * - windowAmount = dailyAmount * LOOKBACK_DAYS (same rate, expressed per-window).
  * - spendingVelocity = 14-day rolling average of actual flex outflows.
  *   Used for the cashflow committed-line drawdown (descriptive, not prescriptive).
  * - Cashflow projection anchors on today's checking balance. Past days are
@@ -66,8 +66,8 @@ export interface FlexibleBreakdownResult {
   groupName: string;
   balance: number;
   dailyAmount: number;
-  weeklyAmount: number;
-  spentThisWeek: number;
+  windowAmount: number;
+  spentInWindow: number;
   spentToday: number;
   remainingToday: number;
   percentOfTotal: number;
@@ -123,7 +123,7 @@ export function computeTotalAvailable(categories: CategoryInput[]): number {
 
 /**
  * Per-category breakdown for flexible categories.
- * weeklyAmount = dailyAmount * 7 (consistent with the daily rate).
+ * windowAmount = dailyAmount * LOOKBACK_DAYS (consistent with the lookback window).
  */
 export function computeFlexibleBreakdown(
   categories: CategoryInput[],
@@ -133,14 +133,14 @@ export function computeFlexibleBreakdown(
   today?: string,
 ): FlexibleBreakdownResult[] {
   const todayStr = today ?? todayISO();
-  const weekAgo = new Date(todayStr + 'T00:00:00');
-  weekAgo.setDate(weekAgo.getDate() - 7);
-  const weekAgoStr = weekAgo.toISOString().slice(0, 10);
+  const windowStart = new Date(todayStr + 'T00:00:00');
+  windowStart.setDate(windowStart.getDate() - LOOKBACK_DAYS);
+  const windowStartStr = windowStart.toISOString().slice(0, 10);
 
   // Spending by category for today
   const spentTodayByCategory = new Map<string, number>();
-  // Spending by category for last 7 days (including today)
-  const weeklySpentByCategory = new Map<string, number>();
+  // Spending by category for the lookback window (including today)
+  const windowSpentByCategory = new Map<string, number>();
 
   for (const txn of transactions) {
     if (txn.amount >= 0) continue; // skip inflows
@@ -150,10 +150,10 @@ export function computeFlexibleBreakdown(
       const cur = spentTodayByCategory.get(txn.categoryName) ?? 0;
       spentTodayByCategory.set(txn.categoryName, cur + absAmount);
     }
-    // 7-day window: weekAgoStr < date <= today (exclusive start, inclusive end)
-    if (txn.date > weekAgoStr && txn.date <= todayStr) {
-      const cur = weeklySpentByCategory.get(txn.categoryName) ?? 0;
-      weeklySpentByCategory.set(txn.categoryName, cur + absAmount);
+    // Lookback window: windowStartStr < date <= today (exclusive start, inclusive end)
+    if (txn.date > windowStartStr && txn.date <= todayStr) {
+      const cur = windowSpentByCategory.get(txn.categoryName) ?? 0;
+      windowSpentByCategory.set(txn.categoryName, cur + absAmount);
     }
   }
 
@@ -162,16 +162,15 @@ export function computeFlexibleBreakdown(
   return flexCats.map((cat) => {
     const catDailyAmount = cat.balance / Math.max(1, daysRemaining);
     const catSpentToday = spentTodayByCategory.get(cat.name) ?? 0;
-    // weeklyAmount = dailyAmount * 7 (consistent with daily rate)
-    const catWeeklyAmount = catDailyAmount * 7;
+    const catWindowAmount = catDailyAmount * LOOKBACK_DAYS;
 
     return {
       name: cat.name,
       groupName: cat.groupName,
       balance: cat.balance,
       dailyAmount: catDailyAmount,
-      weeklyAmount: catWeeklyAmount,
-      spentThisWeek: weeklySpentByCategory.get(cat.name) ?? 0,
+      windowAmount: catWindowAmount,
+      spentInWindow: windowSpentByCategory.get(cat.name) ?? 0,
       spentToday: catSpentToday,
       remainingToday: catDailyAmount - catSpentToday,
       percentOfTotal: totalDailyAmount > 0 ? catDailyAmount / totalDailyAmount : 0,
@@ -188,9 +187,6 @@ export const LOOKBACK_DAYS = 14;
 
 /** Canonical lookahead window used across the app (days) */
 export const LOOKAHEAD_DAYS = 14;
-
-/** Weekly pace window — matches spentThisWeek data (days) */
-export const PACE_WINDOW_DAYS = 7;
 
 /**
  * Compute average daily spending velocity from recent flexible-category outflows.
@@ -241,16 +237,16 @@ export function computePaceOverspend(
 }
 
 /**
- * Estimate how many days a category balance will last at the current weekly
- * spend rate. Capped at LOOKAHEAD (14).
+ * Estimate how many days a category balance will last at the current
+ * spend rate. Capped at LOOKAHEAD_DAYS.
  */
 export function computeCoverageDays(
   balance: number,
-  spentThisWeek: number,
-  lookahead = 14,
+  spentInWindow: number,
+  lookahead = LOOKAHEAD_DAYS,
 ): number {
-  if (balance <= 0 || spentThisWeek <= 0) return lookahead;
-  const dailyRate = spentThisWeek / 7;
+  if (balance <= 0 || spentInWindow <= 0) return lookahead;
+  const dailyRate = spentInWindow / LOOKBACK_DAYS;
   return Math.min(Math.floor(balance / dailyRate), lookahead);
 }
 
