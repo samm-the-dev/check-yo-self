@@ -35,32 +35,51 @@ function CustomTooltip({
   if (!active || !payload?.[0]) return null;
   const ev = payload[0].payload;
   const showDual = ev.checkingBalance !== ev.balance;
+  const hasEvents = ev.dayEvents && ev.dayEvents.length > 0;
+
   return (
     <div className="border-border bg-card rounded-lg border px-3 py-2 shadow-lg">
-      <p className="text-xs font-medium">{formatDate(ev.date)}</p>
+      <div className="flex justify-between gap-4">
+        <span className="text-xs font-medium">{formatDate(ev.date)}</span>
+        {hasEvents && (
+          <span className="text-muted-foreground text-xs tabular-nums">
+            {formatCurrency(ev.startingBalance)}
+          </span>
+        )}
+      </div>
       {ev.dayEvents?.map((de, i) => (
-        <p key={i} className="text-muted-foreground text-xs">
-          {de.label}
-          {de.source === 'goal' ? ' (est.)' : ''}{' '}
-          <span className={de.type === 'income' ? 'text-primary' : 'text-destructive'}>
+        <div key={i} className="text-muted-foreground flex justify-between gap-4 text-xs">
+          <span>
+            {de.label}
+            {de.source === 'goal' ? ' (est.)' : ''}
+          </span>
+          <span
+            className={cn(
+              'tabular-nums',
+              de.type === 'income' ? 'text-primary' : 'text-destructive',
+            )}
+          >
             {de.amount >= 0 ? '+' : ''}
             {formatCurrency(de.amount)}
           </span>
-        </p>
+        </div>
       ))}
       {showDual ? (
         <div className="mt-0.5 flex flex-col gap-0.5">
-          <p className="flex justify-between gap-3 text-xs">
+          <div className="flex justify-between gap-4 text-xs">
             <span>Committed</span>
-            <span>{formatCurrency(ev.checkingBalance)}</span>
-          </p>
-          <p className="flex justify-between gap-3 text-xs">
+            <span className="tabular-nums">{formatCurrency(ev.checkingBalance)}</span>
+          </div>
+          <div className="flex justify-between gap-4 text-xs">
             <span>Projected</span>
-            <span>{formatCurrency(ev.balance)}</span>
-          </p>
+            <span className="tabular-nums">{formatCurrency(ev.balance)}</span>
+          </div>
         </div>
       ) : (
-        <p className="mt-0.5 text-sm font-semibold">{formatCurrency(ev.balance)}</p>
+        <div className="mt-0.5 flex justify-between gap-4 text-xs">
+          <span className="font-medium">Balance</span>
+          <span className="font-medium tabular-nums">{formatCurrency(ev.balance)}</span>
+        </div>
       )}
     </div>
   );

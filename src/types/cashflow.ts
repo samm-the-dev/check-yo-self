@@ -33,6 +33,8 @@ export interface CashflowEvent {
   date: string;
   label: string;
   amount: number;
+  /** Committed balance at the start of this day (before events/drawdown) */
+  startingBalance: number;
   /** Committed balance: checking minus accumulated daily flex drawdown */
   balance: number;
   /** Cash-in-bank balance: only moves on scheduled events that directly hit checking */

@@ -111,6 +111,8 @@ export interface CashflowEntry {
   date: string;
   label: string;
   amount: number;
+  /** Committed balance at the start of this day (before events/drawdown) */
+  startingBalance: number;
   /** Projected balance: checking minus accumulated spending velocity drawdown */
   balance: number;
   /** Committed balance: only moves on hitsChecking scheduled events (no daily drawdown) */
@@ -554,6 +556,7 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
   // Past: both lines are identical (transactions already cleared checking)
   let pastBalance = startBalance;
   for (const dateStr of sortedPastDates) {
+    const dayStart = pastBalance;
     const events = pastByDate.get(dateStr);
     if (events) {
       for (const ev of events) {
@@ -564,6 +567,7 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
       date: dateStr,
       label: dateStr,
       amount: 0,
+      startingBalance: dayStart,
       balance: pastBalance,
       checkingBalance: pastBalance,
       type: 'bill',
@@ -572,10 +576,13 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
   }
 
   // TODAY: anchor point — both lines start at the same value
+  // Starting balance = checking balance before today's transactions
+  const todayEventTotal = todayEvents ? todayEvents.reduce((sum, ev) => sum + ev.amount, 0) : 0;
   projection.push({
     date: today,
     label: 'Today',
     amount: 0,
+    startingBalance: checkingBalance - todayEventTotal,
     balance: checkingBalance,
     checkingBalance: checkingBalance,
     type: 'bill',
@@ -593,6 +600,7 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
   while (fd.toISOString().slice(0, 10) <= horizonStr) {
     const dateStr = fd.toISOString().slice(0, 10);
 
+    const dayStart = futureCheckingBalance;
     futureBalance -= projectedDailySpend;
 
     const events = futureByDate.get(dateStr);
@@ -609,6 +617,7 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
       date: dateStr,
       label: dateStr,
       amount: -projectedDailySpend,
+      startingBalance: dayStart,
       balance: futureBalance,
       checkingBalance: futureCheckingBalance,
       type: 'bill',
