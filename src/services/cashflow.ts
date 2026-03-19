@@ -6,7 +6,7 @@ import type { DailyBudgetSnapshot } from '@/types/budget';
 import {
   buildCashflowProjection,
   computeSpendingVelocity,
-  advanceByYnabFrequency,
+  materializeFutureEvents,
   type TransactionInput,
   type ScheduledTransactionInput,
 } from '@/lib/budget-math';
@@ -63,18 +63,30 @@ export async function getCashflowSnapshot(
     }
   }
 
-  // Convert cached transactions to budget-math inputs
-  const transactions: TransactionInput[] = [];
+  // Convert cached transactions to budget-math inputs.
+  // allTransactions: used for spending velocity (includes CC flex spending).
+  // checkingTransactions: used for cashflow past-balance reconstruction
+  //   (only transactions that moved money in/out of checking).
+  const allTransactions: TransactionInput[] = [];
+  const checkingTransactions: TransactionInput[] = [];
   const pastTxnsCached = await db.cache.get('transactions');
   if (pastTxnsCached) {
     const txns = JSON.parse(pastTxnsCached.data) as ynab.TransactionDetail[];
     for (const t of txns) {
-      transactions.push({
+      const input: TransactionInput = {
         date: t.date,
         amount: milliToDollars(t.amount),
         categoryName: t.category_name ?? 'Uncategorized',
         payeeName: t.payee_name ?? 'Unknown',
-      });
+      };
+      allTransactions.push(input);
+
+      const onChecking = checkingAccountIds.has(t.account_id);
+      const transfersToChecking =
+        t.transfer_account_id != null && checkingAccountIds.has(t.transfer_account_id);
+      if (onChecking || transfersToChecking) {
+        checkingTransactions.push(input);
+      }
     }
   }
 
@@ -89,9 +101,14 @@ export async function getCashflowSnapshot(
       const onChecking = checkingAccountIds.has(t.account_id);
       const transfersToChecking =
         t.transfer_account_id != null && checkingAccountIds.has(t.transfer_account_id);
+      // YNAB signs amounts from the source account's perspective.
+      // When a transfer targets checking from a non-checking account (e.g., CC
+      // payment scheduled on the CC side), negate to get the checking perspective.
+      const baseAmount = milliToDollars(t.amount);
+      const amount = !onChecking && transfersToChecking ? -baseAmount : baseAmount;
       scheduledTransactions.push({
         dateNext: t.date_next,
-        amount: milliToDollars(t.amount),
+        amount,
         frequency: t.frequency,
         payeeName: t.payee_name ?? 'Unknown',
         categoryName: t.category_name ?? 'Uncategorized',
@@ -104,7 +121,7 @@ export async function getCashflowSnapshot(
   // Compute spending velocity from actual flex outflows (14-day rolling avg).
   // Falls back to budget-derived dailyAmount when no transaction data exists.
   const flexNames = new Set(budget?.flexibleBreakdown?.map((c) => c.name) ?? []);
-  const velocity = computeSpendingVelocity(transactions, flexNames, today);
+  const velocity = computeSpendingVelocity(allTransactions, flexNames, today);
   const projectedDailySpend = velocity > 0 ? velocity : (budget?.dailyAmount ?? 0);
 
   // Delegate projection to budget-math
@@ -116,47 +133,28 @@ export async function getCashflowSnapshot(
       today,
       lookbackDays: LOOKBACK_DAYS,
       lookaheadDays: LOOKAHEAD_DAYS,
-      transactions,
+      transactions: checkingTransactions,
       scheduledTransactions,
     });
   }
 
   // Cashflow warning: checking-account bills due before next income exceed balance.
-  // Materializes recurring scheduled transactions so biweekly/weekly bills are counted.
   let cashflowWarning = false;
   if (checkingBalance !== null) {
     const horizonDate = new Date(today + 'T00:00:00');
     horizonDate.setDate(horizonDate.getDate() + LOOKAHEAD_DAYS);
     const horizonStr = horizonDate.toISOString().slice(0, 10);
 
-    // Materialize all future hitsChecking events within the lookahead window
-    const materializedEvents: { date: string; amount: number }[] = [];
-    for (const t of scheduledTransactions) {
-      if (!t.hitsChecking) continue;
-      if (t.frequency === 'never') {
-        if (t.dateNext > today && t.dateNext <= horizonStr) {
-          materializedEvents.push({ date: t.dateNext, amount: t.amount });
-        }
-      } else {
-        const d = new Date(t.dateNext + 'T00:00:00');
-        while (d.toISOString().slice(0, 10) <= today) {
-          advanceByYnabFrequency(d, t.frequency);
-        }
-        let dateStr = d.toISOString().slice(0, 10);
-        while (dateStr <= horizonStr) {
-          materializedEvents.push({ date: dateStr, amount: t.amount });
-          advanceByYnabFrequency(d, t.frequency);
-          dateStr = d.toISOString().slice(0, 10);
-        }
-      }
-    }
+    const checkingEvents = materializeFutureEvents(scheduledTransactions, today, horizonStr).filter(
+      (e) => e.hitsChecking,
+    );
 
-    const sortedDates = [...new Set(materializedEvents.map((e) => e.date))].sort();
+    const sortedDates = [...new Set(checkingEvents.map((e) => e.date))].sort();
     const nextIncomeDate = sortedDates.find((date) =>
-      materializedEvents.some((e) => e.date === date && e.amount > 0),
+      checkingEvents.some((e) => e.date === date && e.amount > 0),
     );
     if (nextIncomeDate) {
-      const billsBefore = materializedEvents
+      const billsBefore = checkingEvents
         .filter((e) => e.date < nextIncomeDate && e.amount < 0)
         .reduce((sum, e) => sum + Math.abs(e.amount), 0);
       cashflowWarning = billsBefore > checkingBalance;

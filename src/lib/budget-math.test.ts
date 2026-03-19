@@ -15,6 +15,7 @@ import {
   computeCoverageDays,
   buildCashflowProjection,
   advanceByYnabFrequency,
+  materializeFutureEvents,
   type CategoryInput,
   type ScheduledTransactionInput,
   type TransactionInput,
@@ -370,11 +371,69 @@ describe('advanceByYnabFrequency', () => {
     expect(d.toISOString().slice(0, 10)).toBe('2026-04-15');
   });
 
-  it('never does not advance the date', () => {
+  it('never does not advance the date and returns false', () => {
     const d = new Date('2026-03-15T00:00:00');
     const original = d.toISOString();
-    advanceByYnabFrequency(d, 'never');
+    expect(advanceByYnabFrequency(d, 'never')).toBe(false);
     expect(d.toISOString()).toBe(original);
+  });
+
+  it('returns true for known frequencies', () => {
+    const d = new Date('2026-03-15T00:00:00');
+    expect(advanceByYnabFrequency(d, 'monthly')).toBe(true);
+  });
+
+  it('returns false for unknown frequencies', () => {
+    const d = new Date('2026-03-15T00:00:00');
+    const original = d.toISOString();
+    expect(advanceByYnabFrequency(d, 'unknownFrequency')).toBe(false);
+    expect(d.toISOString()).toBe(original);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// materializeFutureEvents
+// ---------------------------------------------------------------------------
+
+describe('materializeFutureEvents', () => {
+  it('materializes a one-off event within the window', () => {
+    const scheduled = [makeScheduled({ dateNext: '2026-03-25', frequency: 'never' })];
+    const events = materializeFutureEvents(scheduled, '2026-03-19', '2026-04-02');
+    expect(events).toHaveLength(1);
+    expect(events[0].date).toBe('2026-03-25');
+  });
+
+  it('excludes one-off events outside the window', () => {
+    const scheduled = [makeScheduled({ dateNext: '2026-04-10', frequency: 'never' })];
+    const events = materializeFutureEvents(scheduled, '2026-03-19', '2026-04-02');
+    expect(events).toHaveLength(0);
+  });
+
+  it('materializes recurring events across the window', () => {
+    const scheduled = [
+      makeScheduled({ dateNext: '2026-03-22', frequency: 'weekly', amount: -100 }),
+    ];
+    const events = materializeFutureEvents(scheduled, '2026-03-19', '2026-04-05');
+    // Should appear on March 22, March 29, April 5
+    expect(events).toHaveLength(3);
+    expect(events.map((e) => e.date)).toEqual(['2026-03-22', '2026-03-29', '2026-04-05']);
+  });
+
+  it('does not infinite-loop on unknown frequencies', () => {
+    const scheduled = [
+      makeScheduled({ dateNext: '2026-03-22', frequency: 'unknownFrequency' as string }),
+    ];
+    // Should return without hanging
+    const events = materializeFutureEvents(scheduled, '2026-03-19', '2026-04-02');
+    expect(events.length).toBeLessThanOrEqual(1);
+  });
+
+  it('preserves hitsChecking flag on materialized events', () => {
+    const scheduled = [
+      makeScheduled({ dateNext: '2026-03-25', frequency: 'never', hitsChecking: false }),
+    ];
+    const events = materializeFutureEvents(scheduled, '2026-03-19', '2026-04-02');
+    expect(events[0].hitsChecking).toBe(false);
   });
 });
 
@@ -485,7 +544,7 @@ describe('buildCashflowProjection', () => {
   });
 
   it('continues projectedDailySpend drawdown past month boundary (committed only)', () => {
-    // March 25 + 14 = April 8. dailyAmount continues as best-guess estimate.
+    // March 25 + 14 = April 8. Spending velocity continues as best-guess estimate.
     const result = buildCashflowProjection({
       ...baseParams,
       today: '2026-03-25',

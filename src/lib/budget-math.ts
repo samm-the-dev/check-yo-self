@@ -247,21 +247,26 @@ export function computeCoverageDays(
 }
 
 // ---------------------------------------------------------------------------
-// Frequency advancement (duplicated from ynab.ts / cashflow.ts — now canonical)
+// Frequency advancement (canonical)
 // ---------------------------------------------------------------------------
 
-/** Advance a date in-place by the YNAB scheduled transaction frequency */
-export function advanceByYnabFrequency(date: Date, frequency: string): void {
+/**
+ * Advance a date in-place by the YNAB scheduled transaction frequency.
+ * Returns true if the date was advanced, false for 'never' or unknown
+ * frequencies — callers must break out of materialization loops on false
+ * to avoid infinite iteration.
+ */
+export function advanceByYnabFrequency(date: Date, frequency: string): boolean {
   switch (frequency) {
     case 'daily':
       date.setDate(date.getDate() + 1);
-      break;
+      return true;
     case 'weekly':
       date.setDate(date.getDate() + 7);
-      break;
+      return true;
     case 'everyOtherWeek':
       date.setDate(date.getDate() + 14);
-      break;
+      return true;
     case 'twiceAMonth':
       if (date.getDate() < 15) {
         date.setDate(15);
@@ -269,34 +274,34 @@ export function advanceByYnabFrequency(date: Date, frequency: string): void {
         date.setDate(1);
         date.setMonth(date.getMonth() + 1);
       }
-      break;
+      return true;
     case 'every4Weeks':
       date.setDate(date.getDate() + 28);
-      break;
+      return true;
     case 'monthly':
       date.setMonth(date.getMonth() + 1);
-      break;
+      return true;
     case 'everyOtherMonth':
       date.setMonth(date.getMonth() + 2);
-      break;
+      return true;
     case 'every3Months':
       date.setMonth(date.getMonth() + 3);
-      break;
+      return true;
     case 'every4Months':
       date.setMonth(date.getMonth() + 4);
-      break;
+      return true;
     case 'twiceAYear':
       date.setMonth(date.getMonth() + 6);
-      break;
+      return true;
     case 'yearly':
       date.setFullYear(date.getFullYear() + 1);
-      break;
+      return true;
     case 'everyOtherYear':
       date.setFullYear(date.getFullYear() + 2);
-      break;
+      return true;
     default:
-      // 'never' or unknown — no change
-      break;
+      // 'never' or unknown — no change, caller should not loop
+      return false;
   }
 }
 
@@ -318,6 +323,55 @@ interface CashflowParams {
 }
 
 type DayEvent = { label: string; amount: number; type: 'income' | 'bill'; hitsChecking?: boolean };
+
+export interface MaterializedEvent {
+  date: string;
+  amount: number;
+  label: string;
+  type: 'income' | 'bill';
+  hitsChecking: boolean;
+}
+
+/**
+ * Materialize scheduled transactions into concrete dated events within a window.
+ * Handles both one-off ('never') and recurring frequencies. Breaks safely on
+ * unrecognized frequencies to avoid infinite loops.
+ */
+export function materializeFutureEvents(
+  scheduledTransactions: ScheduledTransactionInput[],
+  today: string,
+  horizonStr: string,
+): MaterializedEvent[] {
+  const events: MaterializedEvent[] = [];
+
+  for (const t of scheduledTransactions) {
+    const base = {
+      amount: t.amount,
+      label: t.payeeName,
+      type: (t.amount < 0 ? 'bill' : 'income') as 'income' | 'bill',
+      hitsChecking: t.hitsChecking,
+    };
+
+    if (t.frequency === 'never') {
+      if (t.dateNext > today && t.dateNext <= horizonStr) {
+        events.push({ ...base, date: t.dateNext });
+      }
+    } else {
+      const d = new Date(t.dateNext + 'T00:00:00');
+      while (d.toISOString().slice(0, 10) <= today) {
+        if (!advanceByYnabFrequency(d, t.frequency)) break;
+      }
+      let dateStr = d.toISOString().slice(0, 10);
+      while (dateStr <= horizonStr) {
+        events.push({ ...base, date: dateStr });
+        if (!advanceByYnabFrequency(d, t.frequency)) break;
+        dateStr = d.toISOString().slice(0, 10);
+      }
+    }
+  }
+
+  return events;
+}
 
 /**
  * Build a cashflow projection: past actuals + today anchor + future drawdown.
@@ -373,35 +427,15 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
 
   // --- Future scheduled events ---
   const futureByDate = new Map<string, DayEvent[]>();
-  for (const t of scheduledTransactions) {
-    const event: DayEvent = {
-      label: t.payeeName,
-      amount: t.amount,
-      type: t.amount < 0 ? 'bill' : 'income',
-      hitsChecking: t.hitsChecking,
-    };
-
-    if (t.frequency === 'never') {
-      if (t.dateNext > today && t.dateNext <= horizonStr) {
-        const list = futureByDate.get(t.dateNext) ?? [];
-        list.push(event);
-        futureByDate.set(t.dateNext, list);
-      }
-    } else {
-      const d = new Date(t.dateNext + 'T00:00:00');
-      // Advance past today
-      while (d.toISOString().slice(0, 10) <= today) {
-        advanceByYnabFrequency(d, t.frequency);
-      }
-      let dateStr = d.toISOString().slice(0, 10);
-      while (dateStr <= horizonStr) {
-        const list = futureByDate.get(dateStr) ?? [];
-        list.push({ ...event });
-        futureByDate.set(dateStr, list);
-        advanceByYnabFrequency(d, t.frequency);
-        dateStr = d.toISOString().slice(0, 10);
-      }
-    }
+  for (const ev of materializeFutureEvents(scheduledTransactions, today, horizonStr)) {
+    const list = futureByDate.get(ev.date) ?? [];
+    list.push({
+      label: ev.label,
+      amount: ev.amount,
+      type: ev.type,
+      hitsChecking: ev.hitsChecking,
+    });
+    futureByDate.set(ev.date, list);
   }
 
   // --- Build projection ---
