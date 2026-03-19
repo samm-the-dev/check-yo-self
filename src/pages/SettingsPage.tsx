@@ -56,8 +56,8 @@ export function SettingsPage() {
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const handleDisconnect = () => {
-    logout();
+  const handleDisconnect = async () => {
+    await logout();
     window.location.reload();
   };
 

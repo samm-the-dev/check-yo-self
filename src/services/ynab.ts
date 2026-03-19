@@ -64,10 +64,13 @@ export function initiateLogin(): void {
   window.location.href = buildAuthUrl();
 }
 
-/** Clear token + plan from localStorage (sign out) */
-export function logout(): void {
+/** Clear token, plan, tiers, and cached data (sign out) */
+export async function logout(): Promise<void> {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(PLAN_KEY);
+  localStorage.removeItem(TIERS_KEY);
+  // Clear cached YNAB data from IndexedDB
+  await db.cache.clear();
 }
 
 // ---------------------------------------------------------------------------
