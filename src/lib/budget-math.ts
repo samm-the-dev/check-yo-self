@@ -264,6 +264,9 @@ export function advanceByYnabFrequency(date: Date, frequency: string): void {
 
 interface CashflowParams {
   checkingBalance: number;
+  /** Outstanding credit card balance (positive = owed). Offsets the committed
+   *  line at today's anchor to reflect spending already spoken for. */
+  creditBalance: number;
   dailyAmount: number;
   today: string; // YYYY-MM-DD
   lookbackDays: number;
@@ -286,14 +289,17 @@ type DayEvent = { label: string; amount: number; type: 'income' | 'bill'; hitsCh
  *   in/out of checking (direct debits, income, account transfers).
  *
  * Past days: both lines are identical (transactions already cleared).
- * Future days: lines diverge as daily flex spending accumulates on the
- * committed line while checking only moves on discrete scheduled events.
+ * Today: committed line starts at `checkingBalance - creditBalance` to
+ * reflect outstanding credit card spending that's already spoken for.
+ * Future days: lines further diverge as daily flex spending accumulates
+ * on the committed line while checking only moves on scheduled events.
  *
  * dailyAmount continues past month-end as a best estimate of ongoing spending.
  */
 export function buildCashflowProjection(params: CashflowParams): CashflowEntry[] {
   const {
     checkingBalance,
+    creditBalance,
     dailyAmount,
     today,
     lookbackDays,
@@ -406,12 +412,15 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
     });
   }
 
-  // TODAY: anchor point — both lines start at the same value
+  // TODAY: anchor point
+  // Committed line starts offset by outstanding credit balance — that money
+  // is already spoken for even though it hasn't left checking yet.
+  const committedToday = checkingBalance - creditBalance;
   projection.push({
     date: today,
     label: 'Today',
     amount: 0,
-    balance: checkingBalance,
+    balance: committedToday,
     checkingBalance: checkingBalance,
     type: 'bill',
     dayEvents: todayEvents,
@@ -420,7 +429,7 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
   // FUTURE: balance = dailyAmount drawdown + all scheduled events (committed view)
   //         checkingBalance = only hitsChecking events (no daily drawdown,
   //         no non-checking-account charges)
-  let futureBalance = checkingBalance;
+  let futureBalance = committedToday;
   let futureCheckingBalance = checkingBalance;
   const fd = new Date(today + 'T00:00:00');
   fd.setDate(fd.getDate() + 1);
