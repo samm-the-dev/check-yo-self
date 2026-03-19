@@ -19,8 +19,10 @@ export interface CashflowEvent {
   date: string;
   label: string;
   amount: number;
-  /** Running balance after this event */
+  /** Committed balance: checking minus accumulated daily drawdown */
   balance: number;
+  /** Cash-in-bank balance: only moves on discrete events (bills, income, CC payments) */
+  checkingBalance: number;
   type: 'income' | 'bill';
   /** Discrete events (bills/paychecks) on this day, if any */
   dayEvents?: { label: string; amount: number; type: 'income' | 'bill' }[];

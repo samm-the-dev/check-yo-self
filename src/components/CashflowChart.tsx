@@ -34,6 +34,7 @@ function CustomTooltip({
 }) {
   if (!active || !payload?.[0]) return null;
   const ev = payload[0].payload;
+  const showDual = ev.checkingBalance !== ev.balance;
   return (
     <div className="border-border bg-card rounded-lg border px-3 py-2 shadow-lg">
       <p className="text-xs font-medium">{formatDate(ev.date)}</p>
@@ -46,7 +47,14 @@ function CustomTooltip({
           </span>
         </p>
       ))}
-      <p className="mt-0.5 text-sm font-semibold">{formatCurrency(ev.balance)}</p>
+      {showDual ? (
+        <div className="mt-0.5 space-y-0.5">
+          <p className="text-sm font-semibold">{formatCurrency(ev.checkingBalance)}</p>
+          <p className="text-muted-foreground text-xs">Committed {formatCurrency(ev.balance)}</p>
+        </div>
+      ) : (
+        <p className="mt-0.5 text-sm font-semibold">{formatCurrency(ev.balance)}</p>
+      )}
     </div>
   );
 }
@@ -91,8 +99,9 @@ export function CashflowChart({ budget }: CashflowChartProps) {
 
   if (loading || projection.length < 2) return null;
 
-  const minBalance = Math.min(...projection.map((p) => p.balance));
-  const maxBalance = Math.max(...projection.map((p) => p.balance));
+  const allBalances = projection.flatMap((p) => [p.balance, p.checkingBalance]);
+  const minBalance = Math.min(...allBalances);
+  const maxBalance = Math.max(...allBalances);
 
   // Always include zero; show a small negative region even if balance stays positive
   const negativeBuffer = maxBalance * 0.08;
@@ -206,11 +215,23 @@ export function CashflowChart({ budget }: CashflowChartProps) {
               fillOpacity={1}
               stroke="none"
             />
-            {/* Balance area fill with gradient */}
+            {/* Budget area fill with gradient (anchored to committed balance) */}
             <Area type="monotone" dataKey="balance" fill="url(#cashflowGradient)" stroke="none" />
+            {/* Committed balance — ghost dashed line */}
             <Line
               type="monotone"
               dataKey="balance"
+              stroke="hsl(152 60% 50%)"
+              strokeWidth={1.5}
+              strokeDasharray="4 3"
+              strokeOpacity={0.4}
+              dot={false}
+              activeDot={false}
+            />
+            {/* Cash-in-bank — solid line */}
+            <Line
+              type="monotone"
+              dataKey="checkingBalance"
               stroke="hsl(152 60% 50%)"
               strokeWidth={2}
               dot={<EventDot />}
@@ -258,16 +279,16 @@ function CashflowMethodology({
       {open && (
         <div className="text-muted-foreground mt-2 space-y-2 text-xs leading-relaxed">
           <p>
-            The chart projects your <strong>checking account balance</strong> over the next 14 days.
-            Past days use actual transactions. Future days subtract your daily flex budget and apply
-            scheduled bills and income from YNAB.
+            The chart shows two lines. The <strong>solid line</strong> is your actual checking
+            balance — it only moves when scheduled bills, income, or CC payments land. The{' '}
+            <strong>dashed line</strong> shows your committed balance after accounting for daily
+            flex spending that hasn't cleared checking yet. They start together at today and diverge
+            as flex spending accumulates.
           </p>
           <p>
-            <strong>CC payments &amp; double-counting:</strong> Scheduled credit card payments are
-            included (they really do pull from checking). Flex spending on a credit card also shows
-            up in the daily drawdown rate, even though it doesn't hit checking until the CC payment
-            lands. This makes the projection pessimistic — it assumes you'll need the cash sooner
-            than you actually will. We think that's the safer default.
+            <strong>CC payments:</strong> When a scheduled CC payment lands, it pulls both lines
+            down (real checking outflow). The gap between lines narrows around CC payment dates
+            since the committed spending is now reflected in checking too.
           </p>
           <p>
             <strong>Month boundary:</strong> The daily rate stays constant past month-end. If your

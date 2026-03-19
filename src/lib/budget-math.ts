@@ -67,7 +67,10 @@ export interface CashflowEntry {
   date: string;
   label: string;
   amount: number;
+  /** Committed balance: checking minus accumulated daily drawdown */
   balance: number;
+  /** Cash-in-bank balance: only moves on discrete events (bills, income, CC payments) */
+  checkingBalance: number;
   type: 'income' | 'bill';
   dayEvents?: { label: string; amount: number; type: 'income' | 'bill' }[];
 }
@@ -375,6 +378,7 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
   }
 
   // Walk forward applying actual transactions
+  // Past: both lines are identical (transactions already cleared checking)
   let pastBalance = startBalance;
   for (const dateStr of sortedPastDates) {
     const events = pastByDate.get(dateStr);
@@ -388,23 +392,27 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
       label: dateStr,
       amount: 0,
       balance: pastBalance,
+      checkingBalance: pastBalance,
       type: 'bill',
       dayEvents: events,
     });
   }
 
-  // TODAY: anchor point
+  // TODAY: anchor point — both lines start at the same value
   projection.push({
     date: today,
     label: 'Today',
     amount: 0,
     balance: checkingBalance,
+    checkingBalance: checkingBalance,
     type: 'bill',
     dayEvents: todayEvents,
   });
 
-  // FUTURE: daily drawdown + scheduled events
+  // FUTURE: balance = dailyAmount drawdown + scheduled events
+  //         checkingBalance = scheduled events only (no daily drawdown)
   let futureBalance = checkingBalance;
+  let futureCheckingBalance = checkingBalance;
   const fd = new Date(today + 'T00:00:00');
   fd.setDate(fd.getDate() + 1);
 
@@ -417,6 +425,7 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
     if (events) {
       for (const ev of events) {
         futureBalance += ev.amount;
+        futureCheckingBalance += ev.amount;
       }
     }
 
@@ -425,6 +434,7 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
       label: dateStr,
       amount: -dailyAmount,
       balance: futureBalance,
+      checkingBalance: futureCheckingBalance,
       type: 'bill',
       dayEvents: events,
     });

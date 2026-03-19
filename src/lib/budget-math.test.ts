@@ -313,21 +313,23 @@ describe('buildCashflowProjection', () => {
     scheduledTransactions: [] as ScheduledTransactionInput[],
   };
 
-  it("anchors on today's checking balance", () => {
+  it("anchors on today's checking balance (both lines)", () => {
     const result = buildCashflowProjection(baseParams);
     const todayEntry = result.find((e) => e.date === '2026-03-19');
     expect(todayEntry).toBeDefined();
     expect(todayEntry!.balance).toBe(2500);
+    expect(todayEntry!.checkingBalance).toBe(2500);
   });
 
-  it('subtracts dailyAmount for each future day', () => {
+  it('subtracts dailyAmount from committed balance only', () => {
     const result = buildCashflowProjection(baseParams);
     const tomorrow = result.find((e) => e.date === '2026-03-20');
     expect(tomorrow).toBeDefined();
     expect(tomorrow!.balance).toBeCloseTo(2500 - 40);
+    expect(tomorrow!.checkingBalance).toBe(2500); // no scheduled events — unchanged
   });
 
-  it('adds income and subtracts bills from scheduled transactions', () => {
+  it('scheduled events move both lines, dailyAmount only moves committed', () => {
     const result = buildCashflowProjection({
       ...baseParams,
       scheduledTransactions: [
@@ -347,18 +349,22 @@ describe('buildCashflowProjection', () => {
       ],
     });
 
-    // March 22: 2500 - 40*3 (3 days) - 200 = 2500 - 120 - 200 = 2180
+    // March 22: committed = 2500 - 40*3 - 200 = 2180
+    //           checking  = 2500 - 200 = 2300 (no daily drawdown)
     const mar22 = result.find((e) => e.date === '2026-03-22');
     expect(mar22).toBeDefined();
     expect(mar22!.balance).toBeCloseTo(2180);
+    expect(mar22!.checkingBalance).toBeCloseTo(2300);
 
-    // March 25: 2180 - 40*3 - 0 + 3000 = 2180 - 120 + 3000 = 5060
+    // March 25: committed = 2180 - 40*3 + 3000 = 5060
+    //           checking  = 2300 + 3000 = 5300
     const mar25 = result.find((e) => e.date === '2026-03-25');
     expect(mar25).toBeDefined();
     expect(mar25!.balance).toBeCloseTo(5060);
+    expect(mar25!.checkingBalance).toBeCloseTo(5300);
   });
 
-  it('includes CC payment transfers in cashflow (real checking outflow)', () => {
+  it('CC payment transfers hit both lines (real checking outflow)', () => {
     const result = buildCashflowProjection({
       ...baseParams,
       scheduledTransactions: [
@@ -373,13 +379,15 @@ describe('buildCashflowProjection', () => {
       ],
     });
 
-    // March 22: 2500 - 40*3 (daily drawdown) - 500 (CC payment) = 1880
+    // March 22: committed = 2500 - 40*3 - 500 = 1880
+    //           checking  = 2500 - 500 = 2000 (CC payment hits checking, no drawdown)
     const mar22 = result.find((e) => e.date === '2026-03-22');
     expect(mar22).toBeDefined();
     expect(mar22!.balance).toBeCloseTo(1880);
+    expect(mar22!.checkingBalance).toBeCloseTo(2000);
   });
 
-  it('reconstructs past balances from actual transactions', () => {
+  it('past balances are identical on both lines (already cleared)', () => {
     const txns: TransactionInput[] = [
       makeTransaction({ date: '2026-03-18', amount: -50, categoryName: 'Groceries' }),
       makeTransaction({ date: '2026-03-17', amount: -30, categoryName: 'Dining' }),
@@ -388,15 +396,15 @@ describe('buildCashflowProjection', () => {
       ...baseParams,
       transactions: txns,
     });
-    // Yesterday (March 18): balance should be 2500 + 50 (before today's balance was reached) reversed
-    // Actually: startBalance = 2500 - (-50) - (-30) = 2580 for start of lookback
-    // Then walk forward: March 17: 2580 - 30 = 2550, March 18: 2550 - 50 = 2500
+    // startBalance = 2500 - (-50) - (-30) = 2580
+    // Walk forward: March 17: 2580 - 30 = 2550, March 18: 2550 - 50 = 2500
     const mar18 = result.find((e) => e.date === '2026-03-18');
     expect(mar18).toBeDefined();
-    expect(mar18!.balance).toBeCloseTo(2500); // After the -50 txn, should match today - today's txns
+    expect(mar18!.balance).toBeCloseTo(2500);
+    expect(mar18!.checkingBalance).toBeCloseTo(2500);
   });
 
-  it('continues dailyAmount drawdown past month boundary', () => {
+  it('continues dailyAmount drawdown past month boundary (committed only)', () => {
     // March 25 + 14 = April 8. dailyAmount continues as best-guess estimate.
     const result = buildCashflowProjection({
       ...baseParams,
@@ -407,11 +415,11 @@ describe('buildCashflowProjection', () => {
 
     const aprilEntries = result.filter((e) => e.date > '2026-03-31');
     expect(aprilEntries.length).toBeGreaterThan(0);
-    // April 1: balance should reflect continued drawdown past month-end
+    // April 1: committed = 2500 - 40*7 = 2220, checking = 2500 (no events)
     const apr1 = result.find((e) => e.date === '2026-04-01');
     expect(apr1).toBeDefined();
-    // 7 days of drawdown (Mar 26–Apr 1) = 280
     expect(apr1!.balance).toBeCloseTo(2500 - 40 * 7);
+    expect(apr1!.checkingBalance).toBe(2500);
   });
 
   it('materializes recurring scheduled transactions across the window', () => {
