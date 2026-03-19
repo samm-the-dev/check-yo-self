@@ -89,7 +89,7 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
       <div className="space-y-1">
         {categories.map((cat) => {
           const coverageDays = computeCoverageDays(cat.balance, cat.spentInWindow, cat.dailyAmount);
-          const overspent = cat.balance < 0 || (cat.balance === 0 && cat.spentInWindow > 0);
+          const overspent = cat.balance < 0;
           // coverageDays = days of the 28-day window consumed by spending.
           // 0 = no spending, 14 = on pace (today marker), 15–28 = overspending.
           const coverFill = overspent ? 1 : coverageDays / WINDOW;
