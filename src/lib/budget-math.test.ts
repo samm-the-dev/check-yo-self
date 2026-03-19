@@ -723,4 +723,45 @@ describe('buildCashflowProjection', () => {
     expect(mar22?.dayEvents?.some((e) => e.amount === -100)).toBe(true);
     expect(mar29?.dayEvents?.some((e) => e.amount === -100)).toBe(true);
   });
+
+  it('startingBalance reflects balance before day events and drawdown', () => {
+    const txns: TransactionInput[] = [
+      makeTransaction({ date: '2026-03-18', amount: -50, categoryName: 'Groceries' }),
+    ];
+    const result = buildCashflowProjection({
+      ...baseParams,
+      transactions: txns,
+      scheduledTransactions: [
+        makeScheduled({
+          dateNext: '2026-03-22',
+          amount: -200,
+          frequency: 'never',
+          transferAccountId: null,
+        }),
+      ],
+    });
+
+    // Past: Mar 18 had a -50 txn. startBalance = 2500+50 = 2550, after txn = 2500.
+    const mar18 = result.find((e) => e.date === '2026-03-18');
+    expect(mar18).toBeDefined();
+    expect(mar18!.startingBalance).toBeCloseTo(2550);
+    expect(mar18!.checkingBalance).toBeCloseTo(2500);
+
+    // Today: anchor at 2500, no today events in this test
+    const today = result.find((e) => e.date === '2026-03-19');
+    expect(today).toBeDefined();
+    expect(today!.startingBalance).toBeCloseTo(2500);
+
+    // Future: Mar 20 starts at 2500 (yesterday's committed ending balance)
+    const mar20 = result.find((e) => e.date === '2026-03-20');
+    expect(mar20).toBeDefined();
+    expect(mar20!.startingBalance).toBe(2500);
+
+    // Future: Mar 22 has a -200 event. startingBalance = committed before event.
+    // Mar 21 committed = 2500, Mar 22 starts at 2500, then -200 → 2300
+    const mar22 = result.find((e) => e.date === '2026-03-22');
+    expect(mar22).toBeDefined();
+    expect(mar22!.startingBalance).toBe(2500);
+    expect(mar22!.checkingBalance).toBeCloseTo(2300);
+  });
 });
