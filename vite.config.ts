@@ -14,7 +14,7 @@ const THEME_COLOR = '#0f172a';
 
 // https://vite.dev/config/
 export default defineConfig(({ command }) => {
-  const ghpBuild = command === 'build' && !process.env.VERCEL;
+  const ghpBuild = command === 'build';
   return {
     plugins: [
       react(),
