@@ -111,7 +111,7 @@ All budget computation lives in `budget-math.ts` as pure functions — no React,
 ### Mental Model
 
 - YNAB owns all category balances. CYS never does its own budgeting math.
-- `totalAvailable` = sum of flexible category balances > 0 (necessities excluded).
+- `totalAvailable` = sum of flexible category spending envelopes (necessities excluded). Categories with a YNAB weekly/monthly spending goal contribute their goal-derived envelope; categories without a goal contribute their positive balance.
 - `dailyAmount` = `totalAvailable / LOOKAHEAD_DAYS` (rolling 14-day horizon, month-agnostic).
 - `windowAmount` = `dailyAmount * LOOKBACK_DAYS` (same rate, expressed per-window).
 - The daily budget guardrail is intentionally decoupled from calendar months. YNAB resets category balances monthly (so `totalAvailable` naturally reflects what's left to spend), but the rate at which you spend it is distributed over a fixed rolling window — no instability at month boundaries.

@@ -153,6 +153,7 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
               </div>
               {(() => {
                 // Budget vs target warning: is this month's budget enough to sustain the goal?
+                // YNAB budgets monthly; weekly goals need 2 occurrences per month
                 const monthlyTarget = cat.goalDisplay
                   ? cat.goalDisplay.cadence === 'weekly'
                     ? cat.goalDisplay.amount * 2
