@@ -16,6 +16,7 @@ import {
   computeFlexibleBreakdown,
   deriveTierFromGoal,
   LOOKAHEAD_DAYS,
+  LOOKBACK_DAYS,
   advanceByYnabFrequency,
   type CategoryInput,
 } from '@/lib/budget-math';
@@ -216,8 +217,13 @@ export async function syncYnabData(force = false): Promise<void> {
   if (!client || !planId) return;
 
   const today = todayISO();
-  // Sync transactions for the current month
+  // Fetch transactions back to the earlier of month-start or the lookback window
+  // so late-prior-month transactions aren't lost on month rollover.
   const monthStart = today.slice(0, 8) + '01';
+  const lookbackDate = new Date(today + 'T00:00:00');
+  lookbackDate.setDate(lookbackDate.getDate() - LOOKBACK_DAYS);
+  const lookbackISO = lookbackDate.toISOString().slice(0, 10);
+  const sinceDate = lookbackISO < monthStart ? lookbackISO : monthStart;
 
   const tasks: Promise<void>[] = [];
 
@@ -238,7 +244,7 @@ export async function syncYnabData(force = false): Promise<void> {
   if (force || (await needsSync('transactions'))) {
     tasks.push(
       client.transactions
-        .getTransactions(planId, monthStart)
+        .getTransactions(planId, sinceDate)
         .then((r) => writeCache('transactions', r.data.transactions)),
     );
   }
