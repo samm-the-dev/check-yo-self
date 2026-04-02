@@ -101,20 +101,21 @@ export interface FlexibleBreakdownResult {
   spentToday: number;
   remainingToday: number;
   percentOfTotal: number;
-  /** Period-aware bar data. Null for categories excluded from the bar. */
+  /** Period-aware bar data used for visualization of this category. */
   bar: {
     /** 'weekly' | 'monthly' = goal-based period bar, 'depletion' = no-goal balance bar */
     mode: 'weekly' | 'monthly' | 'depletion';
-    /** Spending in the goal period (last 7d for weekly, MTD for monthly, MTD for depletion) */
+    /** Spending in the goal period (last 7d for weekly, trailing 30d for monthly, MTD for depletion) */
     periodSpent: number;
     /** Budget for the period (weeklyTarget, monthlyTarget, or activity+balance for depletion) */
     periodBudget: number;
     /** Fill ratio (0–1+). periodSpent / periodBudget. Can exceed 1 (overspent). */
     fill: number;
-    /** Where the "today" marker sits (0–1). For weekly: dayOfWeekInWindow/7.
-     *  For monthly: dayOfMonth/daysInMonth. Null for depletion (no pace concept). */
+    /** Where the "today" marker sits within the bar (0–1). For weekly/monthly goal bars
+     *  this is a fixed mid-period marker at 0.5. For depletion there is no
+     *  pace concept, so the marker is null. */
     todayPosition: number | null;
-    /** Upcoming scheduled transaction total in this category within the period */
+    /** Upcoming scheduled transaction total in this category within the lookahead window */
     scheduledAmount: number;
   };
 }
@@ -224,9 +225,9 @@ export function computeFlexibleBreakdown(
   weekStart.setDate(weekStart.getDate() - 7);
   const weekStartStr = formatLocalDate(weekStart);
 
-  // 30-day lookback for monthly goal bars
+  // Monthly lookback for monthly goal bars
   const monthWindowStart = new Date(todayStr + 'T00:00:00');
-  monthWindowStart.setDate(monthWindowStart.getDate() - 30);
+  monthWindowStart.setDate(monthWindowStart.getDate() - MONTHLY_LOOKBACK_DAYS);
   const monthWindowStartStr = formatLocalDate(monthWindowStart);
 
   // Spending by category across different windows
