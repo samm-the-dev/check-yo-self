@@ -127,8 +127,6 @@ All budget computation lives in `budget-math.ts` as pure functions — no React,
 | `computeDailyAmount`       | `totalAvailable / LOOKAHEAD_DAYS`                |
 | `computeTotalAvailable`    | Sum flexible categories with positive balance    |
 | `computeFlexibleBreakdown` | Per-category daily/weekly amounts, spending      |
-| `computePaceOverspend`     | Spending vs expected pace over lookback window   |
-| `computeCoverageDays`      | How long a balance lasts at current spend rate   |
 | `buildCashflowProjection`  | Past + today + future balance walk               |
 | `advanceByYnabFrequency`   | Date advancement for all YNAB recurrence types   |
 

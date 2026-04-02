@@ -10,6 +10,8 @@ export interface CashflowSnapshot {
   scheduledCount: number;
   /** Whether at least one recurring income transaction exists */
   hasRecurringIncome: boolean;
+  /** Start of the velocity sample window (YYYY-MM-DD), shown as a reference line on the chart */
+  velocityWindowStart?: string;
   /** Chronological projection of balance changes */
   projection: CashflowEvent[];
 }

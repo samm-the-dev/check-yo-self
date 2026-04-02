@@ -10,8 +10,6 @@ import {
   computeTotalAvailable,
   computeFlexibleBreakdown,
   computeSpendingVelocity,
-  computePaceOverspend,
-  computeCoverageDays,
   buildCashflowProjection,
   advanceByYnabFrequency,
   materializeFutureEvents,
@@ -257,70 +255,106 @@ describe('computeFlexibleBreakdown', () => {
     expect(result[0].dailyAmount).toBeCloseTo(10); // target: 70/7
     expect(result[1].dailyAmount).toBeCloseTo(10); // balance: 140/14
   });
-});
 
-// ---------------------------------------------------------------------------
-// pace / overspend
-// ---------------------------------------------------------------------------
+  // --- Bar data tests ---
 
-describe('computePaceOverspend', () => {
-  it('returns overspend when spending exceeds expected pace', () => {
-    // dailyAmount=10, lookback=14: expected=140. spent=160 → overspend=20
-    const result = computePaceOverspend(160, 10, 14);
-    expect(result).toBeCloseTo(20);
+  it('weekly goal: bar uses 7-day window vs weekly target', () => {
+    const cats = [
+      makeCategory({
+        id: '1',
+        name: 'Dining Out',
+        balance: 100,
+        tier: 'flexible',
+        weeklyTarget: 30,
+        goalDisplay: { amount: 30, cadence: 'weekly' },
+      }),
+    ];
+    const txns: TransactionInput[] = [
+      // Within 7 days of March 19
+      makeTransaction({ date: '2026-03-18', amount: -10, categoryName: 'Dining Out' }),
+      makeTransaction({ date: '2026-03-15', amount: -5, categoryName: 'Dining Out' }),
+      // Within 14 days but outside 7 days
+      makeTransaction({ date: '2026-03-10', amount: -20, categoryName: 'Dining Out' }),
+    ];
+    const result = computeFlexibleBreakdown(cats, txns, 10, '2026-03-19');
+    const { bar } = result[0];
+    expect(bar.mode).toBe('weekly');
+    expect(bar.periodSpent).toBeCloseTo(15); // only 7-day window: 10 + 5
+    expect(bar.periodBudget).toBe(30);
+    expect(bar.fill).toBeCloseTo(0.5); // 15/30
+    expect(bar.todayPosition).toBe(0.5);
   });
 
-  it('returns 0 when spending is under pace', () => {
-    const result = computePaceOverspend(100, 10, 14);
-    expect(result).toBe(0);
+  it('monthly goal: bar uses 30-day window vs monthly target', () => {
+    const cats = [
+      makeCategory({
+        id: '1',
+        name: 'Transport',
+        balance: 60,
+        tier: 'flexible',
+        weeklyTarget: (90 * 12) / 52, // normalized weekly from $90/mo
+        goalDisplay: { amount: 90, cadence: 'monthly' },
+        activity: 30, // MTD from YNAB (not used for bar anymore)
+      }),
+    ];
+    const txns: TransactionInput[] = [
+      makeTransaction({ date: '2026-03-18', amount: -20, categoryName: 'Transport' }),
+      makeTransaction({ date: '2026-03-01', amount: -15, categoryName: 'Transport' }),
+      // Outside 30 days from March 19
+      makeTransaction({ date: '2026-02-10', amount: -50, categoryName: 'Transport' }),
+    ];
+    const result = computeFlexibleBreakdown(cats, txns, 10, '2026-03-19');
+    const { bar } = result[0];
+    expect(bar.mode).toBe('monthly');
+    expect(bar.periodSpent).toBeCloseTo(35); // 20 + 15 (within 30 days)
+    expect(bar.periodBudget).toBe(90);
+    expect(bar.fill).toBeCloseTo(35 / 90);
+    expect(bar.todayPosition).toBe(0.5);
   });
 
-  it('returns full spend when dailyAmount is 0', () => {
-    const result = computePaceOverspend(50, 0, 14);
-    expect(result).toBe(50);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// coverageDays
-// ---------------------------------------------------------------------------
-
-describe('computeCoverageDays', () => {
-  it('returns days covered based on spending vs daily budget', () => {
-    // balance=100, spentInWindow=70 → dailyBudget=100/14≈7.14 → consumed=70/7.14≈9.8
-    // Underspent: bar left of today
-    expect(computeCoverageDays(100, 70)).toBeCloseTo(9.8, 1);
-    // balance=50, spentInWindow=70 → dailyBudget=50/14≈3.57 → consumed=70/3.57≈19.6
-    // Ahead of pace: bar past today, spending covers future days
-    expect(computeCoverageDays(50, 70)).toBeCloseTo(19.6, 1);
-  });
-
-  it('returns LOOKBACK_DAYS when spending exactly matches pace', () => {
-    // balance=140, spentInWindow=140 → dailyBudget=10 → consumed=14
-    expect(computeCoverageDays(140, 140)).toBeCloseTo(14);
+  it('no-goal: bar shows depletion (activity / (activity + balance))', () => {
+    const cats = [
+      makeCategory({
+        id: '1',
+        name: 'Misc',
+        balance: 70,
+        tier: 'flexible',
+        activity: 30,
+      }),
+    ];
+    const result = computeFlexibleBreakdown(cats, [], 10, '2026-03-19');
+    const { bar } = result[0];
+    expect(bar.mode).toBe('depletion');
+    expect(bar.periodSpent).toBe(30); // activity
+    expect(bar.periodBudget).toBe(100); // activity + balance
+    expect(bar.fill).toBeCloseTo(0.3); // 30/100
+    expect(bar.todayPosition).toBeNull();
   });
 
-  it('caps at full window (28) when balance is 0 or negative', () => {
-    expect(computeCoverageDays(0, 50)).toBe(28);
-    expect(computeCoverageDays(-10, 50)).toBe(28);
-  });
-
-  it('returns 0 when no spending in window', () => {
-    expect(computeCoverageDays(100, 0)).toBe(0);
-  });
-
-  it('uses dailyBudgetOverride when provided (weekly target scenario)', () => {
-    // weeklyTarget=70 → dailyBudget=10, spentInWindow=140 → consumed=14 (on pace)
-    expect(computeCoverageDays(500, 140, 10)).toBeCloseTo(14);
-    // spentInWindow=200 → consumed=20 (overspending, past today)
-    expect(computeCoverageDays(500, 200, 10)).toBeCloseTo(20);
-  });
-
-  it('falls back to balance-derived daily budget when no override', () => {
-    // balance=140, spentInWindow=140 → dailyBudget=10 → consumed=14
-    expect(computeCoverageDays(140, 140)).toBeCloseTo(14);
-    // Same result as explicit override of 10
-    expect(computeCoverageDays(140, 140, 10)).toBeCloseTo(14);
+  it('bar includes scheduled transaction amounts', () => {
+    const cats = [
+      makeCategory({
+        id: '1',
+        name: 'Groceries',
+        balance: 500,
+        tier: 'flexible',
+        weeklyTarget: 70,
+        goalDisplay: { amount: 70, cadence: 'weekly' },
+      }),
+    ];
+    const scheduled: ScheduledTransactionInput[] = [
+      makeScheduled({
+        dateNext: '2026-03-22',
+        amount: -50,
+        frequency: 'never',
+        categoryName: 'Groceries',
+        payeeName: 'Grocery Store',
+      }),
+    ];
+    const result = computeFlexibleBreakdown(cats, [], 10, '2026-03-19', scheduled);
+    expect(result[0].bar.scheduledEvents).toHaveLength(1);
+    expect(result[0].bar.scheduledEvents[0].date).toBe('2026-03-22');
+    expect(result[0].bar.scheduledEvents[0].amount).toBeCloseTo(50);
   });
 });
 

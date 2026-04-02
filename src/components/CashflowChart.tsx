@@ -232,6 +232,15 @@ export function CashflowChart({ budget }: CashflowChartProps) {
               mirror
             />
             <Tooltip content={<CustomTooltip />} />
+            {/* Velocity window start — shows what period the projection is based on */}
+            {snapshot?.velocityWindowStart && (
+              <ReferenceLine
+                x={snapshot.velocityWindowStart}
+                stroke="currentColor"
+                strokeDasharray="2 3"
+                strokeOpacity={0.25}
+              />
+            )}
             {/* Today marker */}
             <ReferenceLine
               x={todayISO()}
@@ -347,13 +356,13 @@ function CashflowMethodologyContent({
         The chart shows two lines. The <strong>committed</strong> line (solid) is your checking
         balance adjusted only by scheduled transactions that directly hit checking — direct debits,
         income, and account transfers. These are locked-in obligations. The{' '}
-        <strong>projected</strong> line (dashed) takes that further, subtracting your recent daily
-        spending rate to estimate where you're actually heading.
+        <strong>projected</strong> line (dashed) takes that further, subtracting your daily
+        spending rate from the last week to estimate where you're actually heading.
       </p>
       <p>
         <strong>Why two lines?</strong> The committed line shows what's certain. The projected line
-        layers in your real spending pace over the last two weeks — it adapts as your habits change,
-        giving you a best-guess trajectory.
+        layers in your real spending pace over the last week — the shorter window picks up
+        changes in your habits faster, giving you a more responsive trajectory.
       </p>
       <p>
         <strong>Accuracy depends on YNAB setup.</strong> Mark recurring bills and income as
