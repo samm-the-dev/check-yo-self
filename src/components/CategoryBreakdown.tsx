@@ -183,15 +183,15 @@ function CategoryBar({
       <div className="relative mt-1.5 h-1.5 rounded-full">
         {isDepletion ? (
           <>
-            {/* Depletion bar: green (full) → yellow → red (empty), left to right.
-                Fill anchored left, starts at 100%, shrinks from right as budget
-                is consumed. Same gradient as goal bars — the exposed track on
-                the right shows the red "depleted" zone. */}
+            {/* Depletion bar: red → yellow → green (left to right).
+                Gradient is flipped vs goal bars because fill direction is
+                opposite: fill starts full and decreases with spending.
+                Remaining fill stays green (right side), exposed track is red. */}
             <div
               className="absolute inset-0 rounded-full"
               style={{
                 background:
-                  'linear-gradient(to right, hsl(152 60% 50%), hsl(38 92% 50%), hsl(0 65% 50%))',
+                  'linear-gradient(to right, hsl(0 65% 50%), hsl(38 92% 50%), hsl(152 60% 50%))',
                 opacity: 0.2,
               }}
             />
@@ -210,7 +210,7 @@ function CategoryBar({
                   style={{
                     width: `${100 / Math.max(bar.fill, 0.05)}%`,
                     background:
-                      'linear-gradient(to right, hsl(152 60% 50%), hsl(38 92% 50%), hsl(0 65% 50%))',
+                      'linear-gradient(to right, hsl(0 65% 50%), hsl(38 92% 50%), hsl(152 60% 50%))',
                   }}
                 />
               </div>
