@@ -144,14 +144,16 @@ function CategoryBar({
   // For goal-based bars: fill 1.0 (on pace) = today marker (50%).
   // Over pace: extend to the coverage date position on the timeline
   // so the bar visually matches "spending should last through [date]".
-  // Depletion bars use 0-100% directly.
+  // Goal bars: fill 0–1 maps to 0–50% (under/on pace, left of today marker).
+  // fill 1+ maps past the today marker. Over pace uses daysUntilFree to
+  // position the fill at the coverage date on the timeline.
+  // Depletion bars have their own render path.
   let baseFill: number;
   if (overspent) {
     baseFill = 100;
   } else if (isDepletion) {
     baseFill = 0; // depletion bar has its own render path
   } else if (bar.fill > 1 && bar.daysUntilFree != null) {
-    // Over pace: position fill at the coverage date on the timeline
     baseFill = (0.5 + bar.daysUntilFree / (2 * periodDays)) * 100;
   } else {
     baseFill = Math.min(bar.fill, 2) * 50;
@@ -181,8 +183,10 @@ function CategoryBar({
       <div className="relative mt-1.5 h-1.5 rounded-full">
         {isDepletion ? (
           <>
-            {/* Depletion bar: red (fully spent) → yellow → green (fully remaining).
-                Mirror of goal bars' green → yellow → red, just flipped. */}
+            {/* Depletion bar: red → yellow → green (left to right).
+                Gradient is flipped vs goal bars because fill direction is
+                opposite: fill starts full and decreases with spending.
+                Remaining fill stays green (right side), exposed track is red. */}
             <div
               className="absolute inset-0 rounded-full"
               style={{
@@ -198,14 +202,13 @@ function CategoryBar({
               />
             ) : bar.fill <= 0 ? null : (
               <div
-                className="absolute inset-y-0 right-0 overflow-hidden rounded-full transition-all"
+                className="absolute inset-y-0 left-0 overflow-hidden rounded-full transition-all"
                 style={{ width: `${bar.fill * 100}%` }}
               >
                 <div
                   className="h-full rounded-full"
                   style={{
                     width: `${100 / Math.max(bar.fill, 0.05)}%`,
-                    marginLeft: 'auto',
                     background:
                       'linear-gradient(to right, hsl(0 65% 50%), hsl(38 92% 50%), hsl(152 60% 50%))',
                   }}
