@@ -51,6 +51,7 @@ export interface FlexibleCategoryDaily {
   bar: {
     mode: 'weekly' | 'monthly' | 'depletion';
     periodSpent: number;
+    effectiveSpent: number;
     periodBudget: number;
     fill: number;
     todayPosition: number | null;

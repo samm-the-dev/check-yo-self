@@ -107,6 +107,11 @@ export interface FlexibleBreakdownResult {
     mode: 'weekly' | 'monthly' | 'depletion';
     /** Spending in the goal period (last 7d for weekly, trailing 30d for monthly, MTD for depletion) */
     periodSpent: number;
+    /** Decay-weighted spending: each txn's impact decays linearly over the period.
+     *  impact = amount × (periodDays - daysSince) / periodDays.
+     *  Models spending as coverage — a grocery run covers meals for several days,
+     *  and each day that passes frees up budget. */
+    effectiveSpent: number;
     /** Budget for the period (weeklyTarget, monthlyTarget, or activity+balance for depletion) */
     periodBudget: number;
     /** Fill ratio (0–1+). periodSpent / periodBudget. Can exceed 1 (overspent). */
@@ -231,15 +236,33 @@ export function computeFlexibleBreakdown(
   monthWindowStart.setDate(monthWindowStart.getDate() - MONTHLY_LOOKBACK_DAYS);
   const monthWindowStartStr = formatLocalDate(monthWindowStart);
 
-  // Spending by category across different windows
+  // Helper: calendar day difference (DST-safe)
+  const todayMs = Date.UTC(
+    ...(todayStr.split('-').map(Number) as [number, number, number]).map((v, i) =>
+      i === 1 ? v - 1 : v,
+    ) as [number, number, number],
+  );
+  function daysSince(dateStr: string): number {
+    const [y, m, d] = dateStr.split('-').map(Number) as [number, number, number];
+    return (todayMs - Date.UTC(y, m - 1, d)) / (1000 * 60 * 60 * 24);
+  }
+
+  // Spending by category across different windows.
+  // Raw sums (for spentInWindow, velocity) and decay-weighted sums (for bar fill).
+  // Decay: impact = amount × (periodDays - daysSince) / periodDays.
+  // This models spending as coverage — a $20 grocery run covers $2.86/day for 7 days,
+  // and each day that passes "uses up" one day of coverage, freeing budget.
   const spentTodayByCategory = new Map<string, number>();
   const windowSpentByCategory = new Map<string, number>();
   const weekSpentByCategory = new Map<string, number>();
+  const weekDecayByCategory = new Map<string, number>();
   const monthSpentByCategory = new Map<string, number>();
+  const monthDecayByCategory = new Map<string, number>();
 
   for (const txn of transactions) {
     if (txn.amount >= 0) continue; // skip inflows
     const absAmount = Math.abs(txn.amount);
+    const age = daysSince(txn.date);
 
     if (txn.date === todayStr) {
       const cur = spentTodayByCategory.get(txn.categoryName) ?? 0;
@@ -254,11 +277,18 @@ export function computeFlexibleBreakdown(
     if (txn.date > weekStartStr && txn.date <= todayStr) {
       const cur = weekSpentByCategory.get(txn.categoryName) ?? 0;
       weekSpentByCategory.set(txn.categoryName, cur + absAmount);
+      // Decay-weighted: impact decreases linearly as the txn ages
+      const decay = absAmount * Math.max(0, (7 - age) / 7);
+      const curDecay = weekDecayByCategory.get(txn.categoryName) ?? 0;
+      weekDecayByCategory.set(txn.categoryName, curDecay + decay);
     }
     // 30-day lookback: monthWindowStartStr < date <= today
     if (txn.date > monthWindowStartStr && txn.date <= todayStr) {
       const cur = monthSpentByCategory.get(txn.categoryName) ?? 0;
       monthSpentByCategory.set(txn.categoryName, cur + absAmount);
+      const decay = absAmount * Math.max(0, (30 - age) / 30);
+      const curDecay = monthDecayByCategory.get(txn.categoryName) ?? 0;
+      monthDecayByCategory.set(txn.categoryName, curDecay + decay);
     }
   }
 
@@ -300,25 +330,29 @@ export function computeFlexibleBreakdown(
       if (cat.goalDisplay.cadence === 'weekly') {
         // Weekly goal: 7-day sliding window vs weekly target
         const periodSpent = weekSpentByCategory.get(cat.name) ?? 0;
+        const effectiveSpent = weekDecayByCategory.get(cat.name) ?? 0;
         const periodBudget = cat.goalDisplay.amount;
         bar = {
           mode: 'weekly',
           periodSpent,
+          effectiveSpent,
           periodBudget,
-          fill: periodBudget > 0 ? periodSpent / periodBudget : 0,
-          todayPosition: 0.5, // today at midpoint of 7+7 window
+          fill: periodBudget > 0 ? effectiveSpent / periodBudget : 0,
+          todayPosition: 0.5,
           scheduledEvents,
         };
       } else {
         // Monthly goal: 30-day sliding window vs monthly target
         const periodSpent = monthSpentByCategory.get(cat.name) ?? 0;
+        const effectiveSpent = monthDecayByCategory.get(cat.name) ?? 0;
         const periodBudget = cat.goalDisplay.amount;
         bar = {
           mode: 'monthly',
           periodSpent,
+          effectiveSpent,
           periodBudget,
-          fill: periodBudget > 0 ? periodSpent / periodBudget : 0,
-          todayPosition: 0.5, // today at midpoint of 30+30 window
+          fill: periodBudget > 0 ? effectiveSpent / periodBudget : 0,
+          todayPosition: 0.5,
           scheduledEvents,
         };
       }
@@ -331,6 +365,7 @@ export function computeFlexibleBreakdown(
       bar = {
         mode: 'depletion',
         periodSpent: cat.activity,
+        effectiveSpent: cat.activity, // no decay for depletion (MTD from YNAB)
         periodBudget: totalEnvelope,
         fill: totalEnvelope > 0 ? cat.activity / totalEnvelope : 1,
         todayPosition: null,

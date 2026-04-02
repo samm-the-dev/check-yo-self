@@ -50,14 +50,19 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
       {methodologyOpen && (
         <div className="text-muted-foreground space-y-2 text-xs leading-relaxed">
           <p>
-            Each bar shows how much of your budget you've used. For categories with a spending goal,
-            the bar compares your recent spending against your weekly or monthly target. The marker
+            Each bar shows your spending pressure. For categories with a spending goal,
+            the bar reflects how much budget your recent spending has consumed. The marker
             shows today — left means room to spend, right means you've spent ahead of pace.
           </p>
           <p>
-            <strong>Weekly goals</strong> look at your last 7 days of spending.{' '}
+            Spending impact fades over time — a grocery run today uses your full weekly budget,
+            but each day that passes frees up a day's worth. This means your available amount
+            gradually recovers as time passes, even without new spending.
+          </p>
+          <p>
+            <strong>Weekly goals</strong> look at your last 7 days.{' '}
             <strong>Monthly goals</strong> look at the last 30 days. Categories without a goal show
-            how much of the envelope balance has been used this month.
+            how much of the envelope balance has been used, including upcoming scheduled transactions.
           </p>
           {catsWithoutGoals.length > 0 && (
             <div className="border-warning/30 bg-warning/5 rounded-md border px-3 py-2">
@@ -331,19 +336,18 @@ function BarLabel({
       ? `${formatCurrency(effective)} available after upcoming`
       : `${formatCurrency(cat.balance)} remaining`;
   } else if (bar.fill > 1) {
-    // Over pace — spending-is-coverage: how many days past the period does
-    // the overspending cover? spentInWindow / dailyRate - periodDays = overage days
+    // Over pace — spending-is-coverage: how many days until effective spend
+    // decays below the budget? effectiveSpent decays by dailyRate per day.
     const dailyRate = bar.periodBudget / (bar.mode === 'weekly' ? 7 : 30);
-    const daysCovered = dailyRate > 0 ? bar.periodSpent / dailyRate : 0;
-    const periodLen = bar.mode === 'weekly' ? 7 : 30;
-    const overageDays = Math.floor(daysCovered - periodLen);
-    label = `Spending should last through ${formatCoverDate(overageDays)}`;
+    const overageAmount = bar.effectiveSpent - bar.periodBudget;
+    const daysUntilFree = dailyRate > 0 ? Math.ceil(overageAmount / dailyRate) : 0;
+    label = `Spending should last through ${formatCoverDate(daysUntilFree)}`;
   } else {
-    // Under/on pace — show daily allowance
-    const remaining = bar.periodBudget - bar.periodSpent;
-    const periodLabel = bar.mode === 'weekly' ? 7 : 30;
-    const dailyRemaining = Math.max(0, remaining / periodLabel);
-    label = `Can spend ${formatCurrency(dailyRemaining)} today and stay on pace`;
+    // Under/on pace — show available budget (periodBudget - effectiveSpent).
+    // This is the total you can spend today: past spending has decayed,
+    // freeing up budget as days pass.
+    const available = Math.max(0, bar.periodBudget - bar.effectiveSpent);
+    label = `Can spend ${formatCurrency(available)} today and stay on pace`;
   }
 
   return (

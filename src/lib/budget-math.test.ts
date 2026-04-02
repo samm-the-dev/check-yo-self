@@ -279,9 +279,11 @@ describe('computeFlexibleBreakdown', () => {
     const result = computeFlexibleBreakdown(cats, txns, 10, '2026-03-19');
     const { bar } = result[0];
     expect(bar.mode).toBe('weekly');
-    expect(bar.periodSpent).toBeCloseTo(15); // only 7-day window: 10 + 5
+    expect(bar.periodSpent).toBeCloseTo(15); // raw: 10 + 5
+    // Decay: 10×(6/7) + 5×(3/7) ≈ 8.57 + 2.14 = 10.71
+    expect(bar.effectiveSpent).toBeCloseTo(10.71, 1);
     expect(bar.periodBudget).toBe(30);
-    expect(bar.fill).toBeCloseTo(0.5); // 15/30
+    expect(bar.fill).toBeCloseTo(10.71 / 30, 1); // decay-weighted fill
     expect(bar.todayPosition).toBe(0.5);
   });
 
@@ -306,9 +308,11 @@ describe('computeFlexibleBreakdown', () => {
     const result = computeFlexibleBreakdown(cats, txns, 10, '2026-03-19');
     const { bar } = result[0];
     expect(bar.mode).toBe('monthly');
-    expect(bar.periodSpent).toBeCloseTo(35); // 20 + 15 (within 30 days)
+    expect(bar.periodSpent).toBeCloseTo(35); // raw: 20 + 15
+    // Decay: 20×(29/30) + 15×(12/30) ≈ 19.33 + 6 = 25.33
+    expect(bar.effectiveSpent).toBeCloseTo(25.33, 0);
     expect(bar.periodBudget).toBe(90);
-    expect(bar.fill).toBeCloseTo(35 / 90);
+    expect(bar.fill).toBeCloseTo(25.33 / 90, 1); // decay-weighted fill
     expect(bar.todayPosition).toBe(0.5);
   });
 
