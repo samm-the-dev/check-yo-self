@@ -333,7 +333,7 @@ export function computeFlexibleBreakdown(
         periodBudget: totalEnvelope,
         fill: totalEnvelope > 0 ? cat.activity / totalEnvelope : 0,
         todayPosition: null,
-        scheduledAmount,
+        scheduledEvents,
       };
     }
 
