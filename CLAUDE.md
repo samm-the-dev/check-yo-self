@@ -33,6 +33,17 @@ Daily budgeting PWA for a single user (Anthony). Standalone app on `apps.samm-th
 - `src/pages/` — Route-level page components (DashboardPage, TransactionsPage, BillsPage, SettingsPage).
 - `src/components/` — Shared UI. `Layout.tsx` is the app shell with bottom tab nav. `CategoryBreakdown.tsx` uses pace/coverage math from `budget-math.ts`.
 
+### Category Bar Model
+
+Two bar types, both anchored left with the same `green → yellow → red` color semantics:
+
+- **Goal bars** (weekly/monthly): Fill starts at 0% and _increases_ left-to-right with spending. Gradient is `green → yellow → red` in the fill direction — more fill = more consumed = warmer colors. Today marker at 50%. Spending impact decays linearly over the goal period (`impact = amount * (periodDays - daysSince) / periodDays`).
+- **No-goal (depletion) bars**: Fill starts at 100% and _decreases_ (shrinks from right) with spending. Gradient is _flipped_ to `red → yellow → green` so the remaining fill is always green and the exposed track on the right is red. No today marker. `fill` is a remaining ratio (1 = full, 0 = empty).
+
+The gradient is flipped for no-goal bars because the change direction is opposite: goal bars grow with spending (green→red), depletion bars shrink with spending (need the remaining portion to stay green).
+
+Scheduled transaction segments appear as amber blocks on goal bars, positioned at their date on the timeline. For depletion bars, scheduled outflows are added to the "used" portion of the fill calculation.
+
 ### Conventions
 
 - GUIDs everywhere (`crypto.randomUUID()`) — same as ohm.
