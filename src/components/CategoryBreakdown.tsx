@@ -92,8 +92,9 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
           const coverageDays = computeCoverageDays(cat.balance, cat.spentInWindow, cat.dailyAmount);
           const overspent = cat.balance < 0;
           // coverageDays = days of the 28-day window consumed by spending.
-          // 0 = no spending, 14 = on pace (today marker), 15–28 = overspending.
-          const coverFill = overspent ? 1 : coverageDays / WINDOW;
+          // 0 = no spending, 14 = on pace (today marker), >14 = ahead of pace.
+          // Clamp to [0,1] for CSS width — uncapped coverageDays can exceed WINDOW.
+          const coverFill = overspent ? 1 : Math.min(coverageDays / WINDOW, 1);
           return (
             <div key={`${cat.groupName}-${cat.name}`} className="py-1.5">
               <div className="flex items-baseline justify-between gap-2">
@@ -213,7 +214,7 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
                 const balanceDays = computeBalanceCoverageDays(cat.balance, cat.dailyAmount);
 
                 const label =
-                  coverageDays > LOOKBACK_DAYS
+                  balanceDays > LOOKBACK_DAYS
                     ? `Should cover through ${formatCoverDate(Math.floor(balanceDays))}`
                     : `Can spend ${formatCurrency((cat.windowAmount - cat.spentInWindow) / LOOKBACK_DAYS)} today and stay on pace`;
 
