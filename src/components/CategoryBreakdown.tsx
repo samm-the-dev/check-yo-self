@@ -183,10 +183,10 @@ function CategoryBar({
       <div className="relative mt-1.5 h-1.5 rounded-full">
         {isDepletion ? (
           <>
-            {/* Depletion bar: green (full, left) → yellow → red (empty, right).
-                Fill anchored to left, shrinks from right as balance depletes.
-                At 70% remaining the fill shows green→yellow, exposing the
-                red/yellow "danger zone" track on the right. */}
+            {/* Depletion bar: green (full) → yellow → red (empty), left to right.
+                Fill anchored left, starts at 100%, shrinks from right as budget
+                is consumed. Same gradient as goal bars — the exposed track on
+                the right shows the red "depleted" zone. */}
             <div
               className="absolute inset-0 rounded-full"
               style={{
