@@ -263,11 +263,11 @@ export function computeFlexibleBreakdown(
   }
 
   // Upcoming scheduled outflow events by category name, with date for timeline placement.
-  // Materialize recurring transactions within the lookahead window.
+  // Materialize out to the longest bar period so monthly bars can show segments up to 30 days out.
   const scheduledByCategory = new Map<string, { date: string; amount: number }[]>();
   if (scheduledTransactions) {
     const horizonDate = new Date(todayStr + 'T00:00:00');
-    horizonDate.setDate(horizonDate.getDate() + LOOKAHEAD_DAYS);
+    horizonDate.setDate(horizonDate.getDate() + Math.max(LOOKAHEAD_DAYS, MONTHLY_LOOKBACK_DAYS));
     const horizonStr = formatLocalDate(horizonDate);
     const events = materializeFutureEvents(scheduledTransactions, todayStr, horizonStr);
     for (const ev of events) {
@@ -408,57 +408,6 @@ export function computeSpendingVelocity(
 // ---------------------------------------------------------------------------
 // Pace / overspend
 // ---------------------------------------------------------------------------
-
-/**
- * Compare actual spend over a lookback window against expected pace.
- * Returns the overspend amount (0 if on/under pace).
- */
-export function computePaceOverspend(
-  spentInWindow: number,
-  categoryDailyAmount: number,
-  lookbackDays: number,
-): number {
-  if (categoryDailyAmount <= 0) return spentInWindow;
-  const expected = categoryDailyAmount * lookbackDays;
-  return Math.max(0, spentInWindow - expected);
-}
-
-/**
- * How many days of the 28-day window has spending covered?
- *
- * Spending *is* coverage — a grocery run today covers meals for the next week.
- * daysConsumed = spentInWindow / dailyBudget where dailyBudget = balance / LOOKAHEAD_DAYS.
- *
- * 0 = no spending (bar empty). LOOKBACK_DAYS (14) = exactly on pace (bar at
- * today marker). > LOOKBACK_DAYS = ahead of pace (bar past today, spending
- * covers future days). Not capped — the bar clips naturally at 100% width;
- * the text label uses the real value for an honest "cover through" date.
- */
-export function computeCoverageDays(
-  balance: number,
-  spentInWindow: number,
-  dailyBudgetOverride?: number,
-): number {
-  if (spentInWindow <= 0) return 0;
-  const dailyBudget = dailyBudgetOverride ?? balance / LOOKAHEAD_DAYS;
-  if (dailyBudget <= 0) return LOOKBACK_DAYS + LOOKAHEAD_DAYS;
-  return spentInWindow / dailyBudget;
-}
-
-/**
- * How many future days the remaining balance covers at the given daily rate.
- *
- * Used for the "Should cover through [date]" label. More stable than the
- * spending-window-based coverageDays because it only changes when the balance
- * moves (YNAB sync), not when the sliding lookback window shifts.
- */
-export function computeBalanceCoverageDays(
-  balance: number,
-  dailyAmount: number,
-): number {
-  if (balance <= 0 || dailyAmount <= 0) return 0;
-  return balance / dailyAmount;
-}
 
 // ---------------------------------------------------------------------------
 // Frequency advancement (canonical)
@@ -631,11 +580,11 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
 
   const lookbackDate = new Date(today + 'T00:00:00');
   lookbackDate.setDate(lookbackDate.getDate() - lookbackDays);
-  const lookbackStr = lookbackDate.toISOString().slice(0, 10);
+  const lookbackStr = formatLocalDate(lookbackDate);
 
   const horizonDate = new Date(today + 'T00:00:00');
   horizonDate.setDate(horizonDate.getDate() + lookaheadDays);
-  const horizonStr = horizonDate.toISOString().slice(0, 10);
+  const horizonStr = formatLocalDate(horizonDate);
 
   // --- Past transactions by date ---
   const pastByDate = new Map<string, DayEvent[]>();
@@ -672,8 +621,8 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
   // PAST: reconstruct balances from actual transactions
   const sortedPastDates: string[] = [];
   const d = new Date(lookbackStr + 'T00:00:00');
-  while (d.toISOString().slice(0, 10) < today) {
-    sortedPastDates.push(d.toISOString().slice(0, 10));
+  while (formatLocalDate(d) < today) {
+    sortedPastDates.push(formatLocalDate(d));
     d.setDate(d.getDate() + 1);
   }
 
@@ -738,8 +687,8 @@ export function buildCashflowProjection(params: CashflowParams): CashflowEntry[]
   const fd = new Date(today + 'T00:00:00');
   fd.setDate(fd.getDate() + 1);
 
-  while (fd.toISOString().slice(0, 10) <= horizonStr) {
-    const dateStr = fd.toISOString().slice(0, 10);
+  while (formatLocalDate(fd) <= horizonStr) {
+    const dateStr = formatLocalDate(fd);
 
     const dayStart = futureCheckingBalance;
     futureBalance -= projectedDailySpend;

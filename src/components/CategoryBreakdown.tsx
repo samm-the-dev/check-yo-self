@@ -128,7 +128,13 @@ function CategoryBar({
   // Iteratively expand the fill to jump over scheduled segments.
   // Each segment the fill reaches pushes it further, which may cause it
   // to reach the next segment, and so on.
-  const baseFill = overspent ? 100 : Math.min(bar.fill, 1) * 100;
+  // For goal-based bars: fill 1.0 (on pace) = today marker (50%).
+  // fill 2.0 (2x overspent) = 100%. Depletion bars use 0-100% directly.
+  const baseFill = overspent
+    ? 100
+    : isDepletion
+      ? Math.min(bar.fill, 1) * 100
+      : Math.min(bar.fill, 2) * 50;
   let fillPercent = baseFill;
   if (scheduledSegments.length > 0) {
     const sorted = [...scheduledSegments].sort((a, b) => a.left - b.left);

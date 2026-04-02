@@ -10,9 +10,6 @@ import {
   computeTotalAvailable,
   computeFlexibleBreakdown,
   computeSpendingVelocity,
-  computePaceOverspend,
-  computeCoverageDays,
-  computeBalanceCoverageDays,
   buildCashflowProjection,
   advanceByYnabFrequency,
   materializeFutureEvents,
@@ -358,102 +355,6 @@ describe('computeFlexibleBreakdown', () => {
     expect(result[0].bar.scheduledEvents).toHaveLength(1);
     expect(result[0].bar.scheduledEvents[0].date).toBe('2026-03-22');
     expect(result[0].bar.scheduledEvents[0].amount).toBeCloseTo(50);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// pace / overspend
-// ---------------------------------------------------------------------------
-
-describe('computePaceOverspend', () => {
-  it('returns overspend when spending exceeds expected pace', () => {
-    // dailyAmount=10, lookback=14: expected=140. spent=160 → overspend=20
-    const result = computePaceOverspend(160, 10, 14);
-    expect(result).toBeCloseTo(20);
-  });
-
-  it('returns 0 when spending is under pace', () => {
-    const result = computePaceOverspend(100, 10, 14);
-    expect(result).toBe(0);
-  });
-
-  it('returns full spend when dailyAmount is 0', () => {
-    const result = computePaceOverspend(50, 0, 14);
-    expect(result).toBe(50);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// coverageDays
-// ---------------------------------------------------------------------------
-
-describe('computeCoverageDays', () => {
-  it('returns days covered based on spending vs daily budget', () => {
-    // balance=100, spentInWindow=70 → dailyBudget=100/14≈7.14 → consumed=70/7.14≈9.8
-    // Underspent: bar left of today
-    expect(computeCoverageDays(100, 70)).toBeCloseTo(9.8, 1);
-    // balance=50, spentInWindow=70 → dailyBudget=50/14≈3.57 → consumed=70/3.57≈19.6
-    // Ahead of pace: bar past today, spending covers future days
-    expect(computeCoverageDays(50, 70)).toBeCloseTo(19.6, 1);
-  });
-
-  it('returns LOOKBACK_DAYS when spending exactly matches pace', () => {
-    // balance=140, spentInWindow=140 → dailyBudget=10 → consumed=14
-    expect(computeCoverageDays(140, 140)).toBeCloseTo(14);
-  });
-
-  it('returns full window (28) when balance is 0 or negative', () => {
-    expect(computeCoverageDays(0, 50)).toBe(28);
-    expect(computeCoverageDays(-10, 50)).toBe(28);
-  });
-
-  it('is not capped — returns actual coverage days even past 28', () => {
-    // balance=50, spentInWindow=200, dailyBudget=50/14≈3.57, consumed≈56
-    expect(computeCoverageDays(50, 200)).toBeGreaterThan(28);
-  });
-
-  it('returns 0 when no spending in window', () => {
-    expect(computeCoverageDays(100, 0)).toBe(0);
-  });
-
-  it('uses dailyBudgetOverride when provided (weekly target scenario)', () => {
-    // weeklyTarget=70 → dailyBudget=10, spentInWindow=140 → consumed=14 (on pace)
-    expect(computeCoverageDays(500, 140, 10)).toBeCloseTo(14);
-    // spentInWindow=200 → consumed=20 (overspending, past today)
-    expect(computeCoverageDays(500, 200, 10)).toBeCloseTo(20);
-  });
-
-  it('falls back to balance-derived daily budget when no override', () => {
-    // balance=140, spentInWindow=140 → dailyBudget=10 → consumed=14
-    expect(computeCoverageDays(140, 140)).toBeCloseTo(14);
-    // Same result as explicit override of 10
-    expect(computeCoverageDays(140, 140, 10)).toBeCloseTo(14);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// balanceCoverageDays
-// ---------------------------------------------------------------------------
-
-describe('computeBalanceCoverageDays', () => {
-  it('returns days the remaining balance covers at the daily rate', () => {
-    // $70 balance at $10/day → 7 days
-    expect(computeBalanceCoverageDays(70, 10)).toBeCloseTo(7);
-  });
-
-  it('returns 0 when balance is 0 or negative', () => {
-    expect(computeBalanceCoverageDays(0, 10)).toBe(0);
-    expect(computeBalanceCoverageDays(-20, 10)).toBe(0);
-  });
-
-  it('returns 0 when daily amount is 0 or negative', () => {
-    expect(computeBalanceCoverageDays(100, 0)).toBe(0);
-    expect(computeBalanceCoverageDays(100, -5)).toBe(0);
-  });
-
-  it('is not capped — large balances produce large day counts', () => {
-    // $500 balance at $5/day → 100 days
-    expect(computeBalanceCoverageDays(500, 5)).toBeCloseTo(100);
   });
 });
 
