@@ -227,12 +227,10 @@ export async function getCashflowSnapshot(
     (t) => t.amount > 0 && !incomeFrequencies.has(t.frequency),
   );
 
-  // Velocity window start date (for chart reference line)
-  // Subtract VELOCITY_LOOKBACK_DAYS - 1 because computeSpendingVelocity
-  // uses an exclusive start boundary (date > windowStart), so the first
-  // included day is one day after the computed window start.
+  // Velocity window start date (for chart reference line).
+  // Placed one day before the first included day for visual breathing room.
   const velStart = new Date(today + 'T00:00:00');
-  velStart.setDate(velStart.getDate() - (VELOCITY_LOOKBACK_DAYS - 1));
+  velStart.setDate(velStart.getDate() - VELOCITY_LOOKBACK_DAYS);
   const velocityWindowStart = [
     velStart.getFullYear(),
     String(velStart.getMonth() + 1).padStart(2, '0'),
