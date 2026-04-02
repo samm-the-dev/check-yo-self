@@ -111,12 +111,10 @@ function CategoryBar({
       ? bar.scheduledEvents
           .map((ev) => {
             // Use UTC to avoid DST-related 23/25-hour day shifts
-            const evParts = ev.date.split('-').map(Number);
-            const todayParts = todayStr.split('-').map(Number);
+            const [ey, em, ed] = ev.date.split('-').map(Number) as [number, number, number];
+            const [ty, tm, td] = todayStr.split('-').map(Number) as [number, number, number];
             const daysFromToday =
-              (Date.UTC(evParts[0], evParts[1] - 1, evParts[2]) -
-                Date.UTC(todayParts[0], todayParts[1] - 1, todayParts[2])) /
-              (1000 * 60 * 60 * 24);
+              (Date.UTC(ey, em - 1, ed) - Date.UTC(ty, tm - 1, td)) / (1000 * 60 * 60 * 24);
             const right = (0.5 + daysFromToday / periodDays) * 100;
             const width = bar.periodBudget > 0 ? (ev.amount / bar.periodBudget) * 100 : 0;
             const left = right - width;
