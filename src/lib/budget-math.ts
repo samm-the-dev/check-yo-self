@@ -101,6 +101,22 @@ export interface FlexibleBreakdownResult {
   spentToday: number;
   remainingToday: number;
   percentOfTotal: number;
+  /** Period-aware bar data. Null for categories excluded from the bar. */
+  bar: {
+    /** 'weekly' | 'monthly' = goal-based period bar, 'depletion' = no-goal balance bar */
+    mode: 'weekly' | 'monthly' | 'depletion';
+    /** Spending in the goal period (last 7d for weekly, MTD for monthly, MTD for depletion) */
+    periodSpent: number;
+    /** Budget for the period (weeklyTarget, monthlyTarget, or activity+balance for depletion) */
+    periodBudget: number;
+    /** Fill ratio (0–1+). periodSpent / periodBudget. Can exceed 1 (overspent). */
+    fill: number;
+    /** Where the "today" marker sits (0–1). For weekly: dayOfWeekInWindow/7.
+     *  For monthly: dayOfMonth/daysInMonth. Null for depletion (no pace concept). */
+    todayPosition: number | null;
+    /** Upcoming scheduled transaction total in this category within the period */
+    scheduledAmount: number;
+  };
 }
 
 /** Where a cashflow event originated.
@@ -183,22 +199,42 @@ export function computeTotalAvailable(categories: CategoryInput[]): number {
 /**
  * Per-category breakdown for flexible categories.
  * windowAmount = dailyAmount * LOOKBACK_DAYS (consistent with the lookback window).
+ *
+ * Each category gets a `bar` object with period-aware fill data:
+ * - Weekly goal: 7-day sliding window vs weekly target
+ * - Monthly goal: calendar month-to-date vs monthly target
+ * - No goal: depletion gauge (activity / (activity + balance))
  */
 export function computeFlexibleBreakdown(
   categories: CategoryInput[],
   transactions: TransactionInput[],
   totalDailyAmount: number,
   today?: string,
+  scheduledTransactions?: ScheduledTransactionInput[],
 ): FlexibleBreakdownResult[] {
   const todayStr = today ?? todayISO();
+  const todayDate = new Date(todayStr + 'T00:00:00');
+
+  // 14-day lookback window (for legacy spentInWindow / velocity)
   const windowStart = new Date(todayStr + 'T00:00:00');
   windowStart.setDate(windowStart.getDate() - LOOKBACK_DAYS);
   const windowStartStr = formatLocalDate(windowStart);
 
-  // Spending by category for today
+  // 7-day lookback for weekly goal bars
+  const weekStart = new Date(todayStr + 'T00:00:00');
+  weekStart.setDate(weekStart.getDate() - 7);
+  const weekStartStr = formatLocalDate(weekStart);
+
+  // 30-day lookback for monthly goal bars
+  const monthWindowStart = new Date(todayStr + 'T00:00:00');
+  monthWindowStart.setDate(monthWindowStart.getDate() - 30);
+  const monthWindowStartStr = formatLocalDate(monthWindowStart);
+
+  // Spending by category across different windows
   const spentTodayByCategory = new Map<string, number>();
-  // Spending by category for the lookback window (including today)
   const windowSpentByCategory = new Map<string, number>();
+  const weekSpentByCategory = new Map<string, number>();
+  const monthSpentByCategory = new Map<string, number>();
 
   for (const txn of transactions) {
     if (txn.amount >= 0) continue; // skip inflows
@@ -208,10 +244,39 @@ export function computeFlexibleBreakdown(
       const cur = spentTodayByCategory.get(txn.categoryName) ?? 0;
       spentTodayByCategory.set(txn.categoryName, cur + absAmount);
     }
-    // Lookback window: windowStartStr < date <= today (exclusive start, inclusive end)
+    // 14-day lookback: windowStartStr < date <= today
     if (txn.date > windowStartStr && txn.date <= todayStr) {
       const cur = windowSpentByCategory.get(txn.categoryName) ?? 0;
       windowSpentByCategory.set(txn.categoryName, cur + absAmount);
+    }
+    // 7-day lookback: weekStartStr < date <= today
+    if (txn.date > weekStartStr && txn.date <= todayStr) {
+      const cur = weekSpentByCategory.get(txn.categoryName) ?? 0;
+      weekSpentByCategory.set(txn.categoryName, cur + absAmount);
+    }
+    // 30-day lookback: monthWindowStartStr < date <= today
+    if (txn.date > monthWindowStartStr && txn.date <= todayStr) {
+      const cur = monthSpentByCategory.get(txn.categoryName) ?? 0;
+      monthSpentByCategory.set(txn.categoryName, cur + absAmount);
+    }
+  }
+
+  // Upcoming scheduled outflows by category name.
+  // Sum the next occurrence amount for each category (simple approximation —
+  // one-off and first recurring occurrence within the lookahead window).
+  const scheduledByCategory = new Map<string, number>();
+  if (scheduledTransactions) {
+    for (const st of scheduledTransactions) {
+      if (st.amount >= 0) continue; // only outflows
+      const cat = st.categoryName;
+      if (!cat) continue;
+      // Only count if next date is within the lookahead window
+      const horizonDate = new Date(todayStr + 'T00:00:00');
+      horizonDate.setDate(horizonDate.getDate() + LOOKAHEAD_DAYS);
+      if (st.dateNext > todayStr && st.dateNext <= formatLocalDate(horizonDate)) {
+        const cur = scheduledByCategory.get(cat) ?? 0;
+        scheduledByCategory.set(cat, cur + Math.abs(st.amount));
+      }
     }
   }
 
@@ -222,6 +287,49 @@ export function computeFlexibleBreakdown(
       cat.weeklyTarget != null ? cat.weeklyTarget / 7 : cat.balance / LOOKAHEAD_DAYS;
     const catSpentToday = spentTodayByCategory.get(cat.name) ?? 0;
     const catWindowAmount = catDailyAmount * LOOKBACK_DAYS;
+    const scheduledAmount = scheduledByCategory.get(cat.name) ?? 0;
+
+    // --- Bar data ---
+    let bar: FlexibleBreakdownResult['bar'];
+
+    if (cat.goalDisplay) {
+      if (cat.goalDisplay.cadence === 'weekly') {
+        // Weekly goal: 7-day sliding window vs weekly target
+        const periodSpent = weekSpentByCategory.get(cat.name) ?? 0;
+        const periodBudget = cat.goalDisplay.amount;
+        bar = {
+          mode: 'weekly',
+          periodSpent,
+          periodBudget,
+          fill: periodBudget > 0 ? periodSpent / periodBudget : 0,
+          todayPosition: 0.5, // today at midpoint of 7+7 window
+          scheduledAmount,
+        };
+      } else {
+        // Monthly goal: 30-day sliding window vs monthly target
+        const periodSpent = monthSpentByCategory.get(cat.name) ?? 0;
+        const periodBudget = cat.goalDisplay.amount;
+        bar = {
+          mode: 'monthly',
+          periodSpent,
+          periodBudget,
+          fill: periodBudget > 0 ? periodSpent / periodBudget : 0,
+          todayPosition: 0.5, // today at midpoint of 30+30 window
+          scheduledAmount,
+        };
+      }
+    } else {
+      // No goal: depletion gauge — how much of the envelope is used up
+      const totalEnvelope = cat.activity + cat.balance;
+      bar = {
+        mode: 'depletion',
+        periodSpent: cat.activity,
+        periodBudget: totalEnvelope,
+        fill: totalEnvelope > 0 ? cat.activity / totalEnvelope : 0,
+        todayPosition: null,
+        scheduledAmount,
+      };
+    }
 
     return {
       name: cat.name,
@@ -238,6 +346,7 @@ export function computeFlexibleBreakdown(
       spentToday: catSpentToday,
       remainingToday: catDailyAmount - catSpentToday,
       percentOfTotal: totalDailyAmount > 0 ? catDailyAmount / totalDailyAmount : 0,
+      bar,
     };
   });
 }
@@ -255,6 +364,12 @@ export const LOOKAHEAD_DAYS = 14;
 /** Shorter lookback for spending velocity used in the cashflow projection.
  *  More responsive to recent behavior changes than the full LOOKBACK_DAYS window. */
 export const VELOCITY_LOOKBACK_DAYS = 7;
+
+/** Lookback window for monthly goal bar fill (days) */
+export const MONTHLY_LOOKBACK_DAYS = 30;
+
+/** Maximum lookback across all features — determines how far back to sync transactions */
+export const MAX_LOOKBACK_DAYS = MONTHLY_LOOKBACK_DAYS;
 
 /**
  * Compute average daily spending velocity from recent flexible-category outflows.

@@ -47,6 +47,15 @@ export interface FlexibleCategoryDaily {
   remainingToday: number;
   /** Share of total flexible daily budget (0-1) */
   percentOfTotal: number;
+  /** Period-aware bar data for the category breakdown visualization */
+  bar: {
+    mode: 'weekly' | 'monthly' | 'depletion';
+    periodSpent: number;
+    periodBudget: number;
+    fill: number;
+    todayPosition: number | null;
+    scheduledAmount: number;
+  };
 }
 
 /** Computed daily budget — derived from YNAB category balances and spending goals */

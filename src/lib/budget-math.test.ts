@@ -258,6 +258,105 @@ describe('computeFlexibleBreakdown', () => {
     expect(result[0].dailyAmount).toBeCloseTo(10); // target: 70/7
     expect(result[1].dailyAmount).toBeCloseTo(10); // balance: 140/14
   });
+
+  // --- Bar data tests ---
+
+  it('weekly goal: bar uses 7-day window vs weekly target', () => {
+    const cats = [
+      makeCategory({
+        id: '1',
+        name: 'Dining Out',
+        balance: 100,
+        tier: 'flexible',
+        weeklyTarget: 30,
+        goalDisplay: { amount: 30, cadence: 'weekly' },
+      }),
+    ];
+    const txns: TransactionInput[] = [
+      // Within 7 days of March 19
+      makeTransaction({ date: '2026-03-18', amount: -10, categoryName: 'Dining Out' }),
+      makeTransaction({ date: '2026-03-15', amount: -5, categoryName: 'Dining Out' }),
+      // Within 14 days but outside 7 days
+      makeTransaction({ date: '2026-03-10', amount: -20, categoryName: 'Dining Out' }),
+    ];
+    const result = computeFlexibleBreakdown(cats, txns, 10, '2026-03-19');
+    const { bar } = result[0];
+    expect(bar.mode).toBe('weekly');
+    expect(bar.periodSpent).toBeCloseTo(15); // only 7-day window: 10 + 5
+    expect(bar.periodBudget).toBe(30);
+    expect(bar.fill).toBeCloseTo(0.5); // 15/30
+    expect(bar.todayPosition).toBe(0.5);
+  });
+
+  it('monthly goal: bar uses 30-day window vs monthly target', () => {
+    const cats = [
+      makeCategory({
+        id: '1',
+        name: 'Transport',
+        balance: 60,
+        tier: 'flexible',
+        weeklyTarget: (90 * 12) / 52, // normalized weekly from $90/mo
+        goalDisplay: { amount: 90, cadence: 'monthly' },
+        activity: 30, // MTD from YNAB (not used for bar anymore)
+      }),
+    ];
+    const txns: TransactionInput[] = [
+      makeTransaction({ date: '2026-03-18', amount: -20, categoryName: 'Transport' }),
+      makeTransaction({ date: '2026-03-01', amount: -15, categoryName: 'Transport' }),
+      // Outside 30 days from March 19
+      makeTransaction({ date: '2026-02-10', amount: -50, categoryName: 'Transport' }),
+    ];
+    const result = computeFlexibleBreakdown(cats, txns, 10, '2026-03-19');
+    const { bar } = result[0];
+    expect(bar.mode).toBe('monthly');
+    expect(bar.periodSpent).toBeCloseTo(35); // 20 + 15 (within 30 days)
+    expect(bar.periodBudget).toBe(90);
+    expect(bar.fill).toBeCloseTo(35 / 90);
+    expect(bar.todayPosition).toBe(0.5);
+  });
+
+  it('no-goal: bar shows depletion (activity / (activity + balance))', () => {
+    const cats = [
+      makeCategory({
+        id: '1',
+        name: 'Misc',
+        balance: 70,
+        tier: 'flexible',
+        activity: 30,
+      }),
+    ];
+    const result = computeFlexibleBreakdown(cats, [], 10, '2026-03-19');
+    const { bar } = result[0];
+    expect(bar.mode).toBe('depletion');
+    expect(bar.periodSpent).toBe(30); // activity
+    expect(bar.periodBudget).toBe(100); // activity + balance
+    expect(bar.fill).toBeCloseTo(0.3); // 30/100
+    expect(bar.todayPosition).toBeNull();
+  });
+
+  it('bar includes scheduled transaction amounts', () => {
+    const cats = [
+      makeCategory({
+        id: '1',
+        name: 'Groceries',
+        balance: 500,
+        tier: 'flexible',
+        weeklyTarget: 70,
+        goalDisplay: { amount: 70, cadence: 'weekly' },
+      }),
+    ];
+    const scheduled: ScheduledTransactionInput[] = [
+      makeScheduled({
+        dateNext: '2026-03-22',
+        amount: -50,
+        frequency: 'never',
+        categoryName: 'Groceries',
+        payeeName: 'Grocery Store',
+      }),
+    ];
+    const result = computeFlexibleBreakdown(cats, [], 10, '2026-03-19', scheduled);
+    expect(result[0].bar.scheduledAmount).toBeCloseTo(50);
+  });
 });
 
 // ---------------------------------------------------------------------------

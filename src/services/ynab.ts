@@ -17,6 +17,7 @@ import {
   deriveTierFromGoal,
   LOOKAHEAD_DAYS,
   LOOKBACK_DAYS,
+  MAX_LOOKBACK_DAYS,
   advanceByYnabFrequency,
   type CategoryInput,
 } from '@/lib/budget-math';
@@ -217,11 +218,10 @@ export async function syncYnabData(force = false): Promise<void> {
   if (!client || !planId) return;
 
   const today = todayISO();
-  // Always fetch at least LOOKBACK_DAYS of history so the spending velocity
-  // window isn't truncated on month rollover (the old bug: using month-start
-  // as since_date dropped prior-month transactions on the 1st).
+  // Fetch enough history for the longest lookback window (monthly goal bars
+  // need 30 days). Also prevents month-rollover transaction loss.
   const lookbackDate = new Date(today + 'T00:00:00');
-  lookbackDate.setDate(lookbackDate.getDate() - LOOKBACK_DAYS);
+  lookbackDate.setDate(lookbackDate.getDate() - MAX_LOOKBACK_DAYS);
   // Format as local date to avoid UTC timezone shift (toISOString can be off by a day)
   const sinceDate = [
     lookbackDate.getFullYear(),
@@ -296,6 +296,7 @@ export async function getDailyBudgetSnapshot(): Promise<DailyBudgetSnapshot | nu
   const categoryGroups = await readCache<ynab.CategoryGroupWithCategories[]>('categories');
   const transactions = await readCache<ynab.TransactionDetail[]>('transactions');
   const monthDetail = await readCache<ynab.MonthDetail>('month');
+  const scheduledRaw = await readCache<ynab.ScheduledTransactionDetail[]>('scheduled');
 
   if (!categoryGroups || !transactions) return null;
 
@@ -411,11 +412,30 @@ export async function getDailyBudgetSnapshot(): Promise<DailyBudgetSnapshot | nu
       categoryName: t.category_name ?? 'Uncategorized',
       payeeName: t.payee_name ?? 'Unknown',
     }));
+    // Convert scheduled transactions for bar fill computation
+    const scheduledInputs: import('@/lib/budget-math').ScheduledTransactionInput[] = [];
+    if (scheduledRaw) {
+      for (const t of scheduledRaw) {
+        if (t.category_name == null) continue; // skip transfers without category
+        scheduledInputs.push({
+          dateNext: t.date_next,
+          amount: milliToDollars(t.amount),
+          frequency: t.frequency,
+          payeeName: t.payee_name ?? 'Unknown',
+          categoryName: t.category_name,
+          categoryId: t.category_id ?? undefined,
+          transferAccountId: t.transfer_account_id ?? null,
+          hitsChecking: true, // not relevant for bar computation
+        });
+      }
+    }
+
     snapshot.flexibleBreakdown = computeFlexibleBreakdown(
       categoryInputs,
       txnInputs,
       dailyAmount,
       today,
+      scheduledInputs,
     );
   }
 
