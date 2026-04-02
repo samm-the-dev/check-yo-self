@@ -160,12 +160,12 @@ function CategoryBar({
       <div className="relative mt-1.5 h-1.5 rounded-full">
         {isDepletion ? (
           <>
-            {/* Depletion bar: remaining balance shown as green fill from right,
-                spent portion is the empty/warm-toned left side */}
+            {/* Depletion bar: red (fully spent) → yellow → green (fully remaining).
+                Mirror of goal bars' green → yellow → red, just flipped. */}
             <div
               className="absolute inset-0 rounded-full"
               style={{
-                background: 'linear-gradient(to right, hsl(38 92% 50%), hsl(152 60% 50%))',
+                background: 'linear-gradient(to right, hsl(0 65% 50%), hsl(38 92% 50%), hsl(152 60% 50%))',
                 opacity: 0.2,
               }}
             />
@@ -174,7 +174,7 @@ function CategoryBar({
                 className="absolute inset-0 rounded-full"
                 style={{ background: 'hsl(0 65% 50%)' }}
               />
-            ) : (
+            ) : bar.fill >= 1 ? null : (
               <div
                 className="absolute inset-y-0 right-0 overflow-hidden rounded-full transition-all"
                 style={{ width: `${(1 - bar.fill) * 100}%` }}
@@ -184,11 +184,11 @@ function CategoryBar({
                   style={{
                     width: `${100 / Math.max(1 - bar.fill, 0.05)}%`,
                     marginLeft: 'auto',
-                    background: 'linear-gradient(to right, hsl(38 92% 50%), hsl(152 60% 50%))',
+                    background: 'linear-gradient(to right, hsl(0 65% 50%), hsl(38 92% 50%), hsl(152 60% 50%))',
                   }}
                 />
               </div>
-            )}
+            )}}
           </>
         ) : (
           <>
@@ -325,7 +325,11 @@ function BarLabel({
 
   let label: string;
   if (bar.mode === 'depletion') {
-    label = `${formatCurrency(cat.balance)} remaining`;
+    const scheduledTotal = bar.scheduledEvents.reduce((sum, ev) => sum + ev.amount, 0);
+    const effective = Math.max(0, cat.balance - scheduledTotal);
+    label = scheduledTotal > 0
+      ? `${formatCurrency(effective)} available after upcoming`
+      : `${formatCurrency(cat.balance)} remaining`;
   } else if (bar.fill > 1) {
     // Over pace — spending-is-coverage: how many days past the period does
     // the overspending cover? spentInWindow / dailyRate - periodDays = overage days

@@ -323,13 +323,16 @@ export function computeFlexibleBreakdown(
         };
       }
     } else {
-      // No goal: depletion gauge — how much of the envelope is used up
-      const totalEnvelope = cat.activity + cat.balance;
+      // No goal: depletion gauge — how much of the envelope is used up.
+      // Subtract upcoming scheduled outflows from remaining balance.
+      const scheduledTotal = scheduledEvents.reduce((sum, ev) => sum + ev.amount, 0);
+      const effectiveBalance = Math.max(0, cat.balance - scheduledTotal);
+      const totalEnvelope = cat.activity + effectiveBalance;
       bar = {
         mode: 'depletion',
         periodSpent: cat.activity,
         periodBudget: totalEnvelope,
-        fill: totalEnvelope > 0 ? cat.activity / totalEnvelope : 0,
+        fill: totalEnvelope > 0 ? cat.activity / totalEnvelope : 1,
         todayPosition: null,
         scheduledEvents,
       };

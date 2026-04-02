@@ -42,7 +42,7 @@ export function useBudget(): BudgetState {
   const loadFromCache = useCallback(async () => {
     const [snap, txns, bills] = await Promise.all([
       getDailyBudgetSnapshot(),
-      getRecentTransactions(7),
+      getRecentTransactions(),
       getUpcomingScheduled(14),
     ]);
     setBudget(snap);
