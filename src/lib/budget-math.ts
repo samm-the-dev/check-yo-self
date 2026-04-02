@@ -237,11 +237,8 @@ export function computeFlexibleBreakdown(
   const monthWindowStartStr = formatLocalDate(monthWindowStart);
 
   // Helper: calendar day difference (DST-safe)
-  const todayMs = Date.UTC(
-    ...(todayStr.split('-').map(Number) as [number, number, number]).map((v, i) =>
-      i === 1 ? v - 1 : v,
-    ) as [number, number, number],
-  );
+  const [ty, tm, td] = todayStr.split('-').map(Number) as [number, number, number];
+  const todayMs = Date.UTC(ty, tm - 1, td);
   function daysSince(dateStr: string): number {
     const [y, m, d] = dateStr.split('-').map(Number) as [number, number, number];
     return (todayMs - Date.UTC(y, m - 1, d)) / (1000 * 60 * 60 * 24);
