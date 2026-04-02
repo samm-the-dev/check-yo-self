@@ -206,6 +206,7 @@ function CategoryBar({
                 <div
                   className="h-full rounded-full"
                   style={{
+                    width: `${100 / Math.max(bar.fill, 0.05)}%`,
                     background:
                       'linear-gradient(to right, hsl(152 60% 50%), hsl(38 92% 50%), hsl(0 65% 50%))',
                   }}
