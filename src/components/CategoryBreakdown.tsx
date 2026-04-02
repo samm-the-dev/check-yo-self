@@ -338,17 +338,23 @@ function BarLabel({
   let label: string;
   if (bar.mode === 'depletion') {
     const scheduledTotal = bar.scheduledEvents.reduce((sum, ev) => sum + ev.amount, 0);
-    const effective = Math.max(0, cat.balance - scheduledTotal);
-    label =
-      scheduledTotal > 0
-        ? `${formatCurrency(effective)} available after upcoming`
-        : `${formatCurrency(cat.balance)} remaining`;
+    const effective = cat.balance - scheduledTotal;
+    if (scheduledTotal > 0) {
+      label =
+        effective >= 0
+          ? `${formatCurrency(effective)} available after upcoming`
+          : `${formatCurrency(Math.abs(effective))} short after upcoming`;
+    } else {
+      label = `${formatCurrency(cat.balance)} remaining`;
+    }
   } else if (bar.fill > 1) {
     // Over pace — spending-is-coverage: how many days until effective spend
-    // decays below the budget? effectiveSpent decays by dailyRate per day.
-    const dailyRate = bar.periodBudget / (bar.mode === 'weekly' ? 7 : 30);
+    // decays below the budget? Each txn decays at amount/periodDays per day,
+    // so the total decay rate is proportional to raw periodSpent.
+    const periodDays = bar.mode === 'weekly' ? 7 : 30;
+    const decayRate = bar.periodSpent / periodDays;
     const overageAmount = bar.effectiveSpent - bar.periodBudget;
-    const daysUntilFree = dailyRate > 0 ? Math.ceil(overageAmount / dailyRate) : 0;
+    const daysUntilFree = decayRate > 0 ? Math.ceil(overageAmount / decayRate) : 0;
     label = `Spending should last through ${formatCoverDate(daysUntilFree)}`;
   } else {
     // Under/on pace — show available budget (periodBudget - effectiveSpent).

@@ -383,9 +383,10 @@ describe('computeFlexibleBreakdown', () => {
     const result = computeFlexibleBreakdown(cats, [], 10, '2026-03-19', scheduled);
     const { bar } = result[0];
     expect(bar.mode).toBe('depletion');
-    // effectiveBalance = max(0, 70 - 20) = 50, totalEnvelope = 30 + 50 = 80
-    expect(bar.periodBudget).toBe(80);
-    expect(bar.fill).toBeCloseTo(30 / 80); // higher fill than without scheduled
+    // totalEnvelope = activity + balance = 30 + 70 = 100 (original, not reduced)
+    // usedPortion = activity + scheduled = 30 + 20 = 50
+    expect(bar.periodBudget).toBe(100);
+    expect(bar.fill).toBeCloseTo(50 / 100); // scheduled counts as committed spending
   });
 });
 

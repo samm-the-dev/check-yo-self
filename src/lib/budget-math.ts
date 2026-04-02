@@ -356,16 +356,17 @@ export function computeFlexibleBreakdown(
       }
     } else {
       // No goal: depletion gauge — how much of the envelope is used up.
-      // Subtract upcoming scheduled outflows from remaining balance.
+      // Keep original envelope as denominator so the bar accurately reflects
+      // the proportion used. Scheduled outflows count as "committed" spending.
       const scheduledTotal = scheduledEvents.reduce((sum, ev) => sum + ev.amount, 0);
-      const effectiveBalance = Math.max(0, cat.balance - scheduledTotal);
-      const totalEnvelope = cat.activity + effectiveBalance;
+      const totalEnvelope = cat.activity + cat.balance;
+      const usedPortion = cat.activity + scheduledTotal;
       bar = {
         mode: 'depletion',
         periodSpent: cat.activity,
-        effectiveSpent: cat.activity, // no decay for depletion (MTD from YNAB)
+        effectiveSpent: usedPortion,
         periodBudget: totalEnvelope,
-        fill: totalEnvelope > 0 ? cat.activity / totalEnvelope : 1,
+        fill: totalEnvelope > 0 ? usedPortion / totalEnvelope : 1,
         todayPosition: null,
         scheduledEvents,
       };
