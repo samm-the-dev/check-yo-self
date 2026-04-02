@@ -101,9 +101,9 @@ function CategoryBar({
 }) {
   const { bar } = cat;
   const isDepletion = bar.mode === 'depletion';
-  // For depletion bars, overspent only when scheduled txns push balance negative
-  // (fill > 1). fill === 1 (fully used, $0 remaining) shows as empty bar, not red.
-  const overspent = isDepletion ? bar.fill > 1 : cat.balance < 0;
+  // For depletion bars, fill is remaining ratio (1=full, 0=empty).
+  // Overspent when scheduled txns push remaining negative (effectiveSpent > periodBudget).
+  const overspent = isDepletion ? bar.effectiveSpent > bar.periodBudget : cat.balance < 0;
 
   const todayPercent = bar.todayPosition != null ? bar.todayPosition * 100 : null;
   const hasToday = todayPercent != null;
@@ -149,7 +149,7 @@ function CategoryBar({
   if (overspent) {
     baseFill = 100;
   } else if (isDepletion) {
-    baseFill = Math.min(bar.fill, 1) * 100;
+    baseFill = 0; // depletion bar has its own render path
   } else if (bar.fill > 1 && bar.daysUntilFree != null) {
     // Over pace: position fill at the coverage date on the timeline
     baseFill = (0.5 + bar.daysUntilFree / (2 * periodDays)) * 100;
@@ -196,15 +196,15 @@ function CategoryBar({
                 className="absolute inset-0 rounded-full"
                 style={{ background: 'hsl(0 65% 50%)' }}
               />
-            ) : bar.fill >= 1 ? null : (
+            ) : bar.fill <= 0 ? null : (
               <div
                 className="absolute inset-y-0 right-0 overflow-hidden rounded-full transition-all"
-                style={{ width: `${(1 - bar.fill) * 100}%` }}
+                style={{ width: `${bar.fill * 100}%` }}
               >
                 <div
                   className="h-full rounded-full"
                   style={{
-                    width: `${100 / Math.max(1 - bar.fill, 0.05)}%`,
+                    width: `${100 / Math.max(bar.fill, 0.05)}%`,
                     marginLeft: 'auto',
                     background:
                       'linear-gradient(to right, hsl(0 65% 50%), hsl(38 92% 50%), hsl(152 60% 50%))',

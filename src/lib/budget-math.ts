@@ -114,9 +114,10 @@ export interface FlexibleBreakdownResult {
     effectiveSpent: number;
     /** Budget for the period (weeklyTarget, monthlyTarget, or activity+balance for depletion) */
     periodBudget: number;
-    /** Fill ratio (0–1+). effectiveSpent / periodBudget for goal bars,
-     *  (activity + scheduledOutflows) / (activity + balance) for depletion.
-     *  Can exceed 1 (overspent). */
+    /** For goal bars: fill ratio (0–1+). effectiveSpent / periodBudget.
+     *  Can exceed 1 (over pace).
+     *  For depletion bars: remaining ratio (0–1). Portion of the envelope
+     *  not yet consumed by spending + scheduled outflows. 0 = fully used. */
     fill: number;
     /** Where the "today" marker sits within the bar (0–1). For weekly/monthly goal bars
      *  this is a fixed mid-period marker at 0.5. For depletion there is no
@@ -216,7 +217,7 @@ export function computeTotalAvailable(categories: CategoryInput[]): number {
  * Each category gets a `bar` object with period-aware fill data:
  * - Weekly goal: 7-day sliding window vs weekly target
  * - Monthly goal: trailing MONTHLY_LOOKBACK_DAYS window vs monthly target
- * - No goal: depletion gauge (activity / (activity + balance))
+ * - No goal: depletion gauge (remaining ratio: balance / (activity + balance))
  */
 export function computeFlexibleBreakdown(
   categories: CategoryInput[],
@@ -396,18 +397,18 @@ export function computeFlexibleBreakdown(
         };
       }
     } else {
-      // No goal: depletion gauge — how much of the envelope is used up.
-      // Keep original envelope as denominator so the bar accurately reflects
-      // the proportion used. Scheduled outflows count as "committed" spending.
+      // No goal: depletion gauge — how much of the envelope remains.
+      // fill = remaining ratio (1 = full, 0 = fully used, negative = over-committed).
+      // Scheduled outflows reduce the remaining balance.
       const scheduledTotal = scheduledEvents.reduce((sum, ev) => sum + ev.amount, 0);
       const totalEnvelope = cat.activity + cat.balance;
-      const usedPortion = cat.activity + scheduledTotal;
+      const remaining = cat.balance - scheduledTotal;
       bar = {
         mode: 'depletion',
         periodSpent: cat.activity,
-        effectiveSpent: usedPortion,
+        effectiveSpent: cat.activity + scheduledTotal,
         periodBudget: totalEnvelope,
-        fill: totalEnvelope > 0 ? usedPortion / totalEnvelope : 1,
+        fill: totalEnvelope > 0 ? Math.max(0, remaining / totalEnvelope) : 0,
         todayPosition: null,
         scheduledEvents,
       };
