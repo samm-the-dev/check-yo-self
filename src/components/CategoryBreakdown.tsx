@@ -101,8 +101,9 @@ function CategoryBar({
   // The right edge of each segment aligns with the scheduled date (that's
   // when the money leaves). Width = how much budget it consumes.
   const todayStr = todayISO();
-  // Future half of the bar spans one goal period (7 days for weekly, 30 for monthly).
-  // A date d days from now maps to position 0.5 + d/periodDays.
+  // The bar is a symmetric window: periodDays back + periodDays forward.
+  // A date d days from now maps to position 0.5 + d/(2*periodDays).
+  // e.g. weekly: 7 back + 7 forward = 14 total, d=7 → 0.5 + 7/14 = 1.0 (bar end).
   const periodDays = bar.mode === 'weekly' ? 7 : bar.mode === 'monthly' ? 30 : 0;
   const scheduledSegments =
     !isDepletion && !overspent && bar.scheduledEvents.length > 0
@@ -113,7 +114,7 @@ function CategoryBar({
             const [ty, tm, td] = todayStr.split('-').map(Number) as [number, number, number];
             const daysFromToday =
               (Date.UTC(ey, em - 1, ed) - Date.UTC(ty, tm - 1, td)) / (1000 * 60 * 60 * 24);
-            const right = (0.5 + daysFromToday / periodDays) * 100;
+            const right = (0.5 + daysFromToday / (2 * periodDays)) * 100;
             const width = bar.periodBudget > 0 ? (ev.amount / bar.periodBudget) * 100 : 0;
             const left = right - width;
             return { left, width };
