@@ -18,9 +18,9 @@ interface BudgetState {
   syncing: boolean;
   /** The daily budget snapshot (null if not yet loaded) */
   budget: DailyBudgetSnapshot | null;
-  /** Recent transactions (last 7 days) */
+  /** Recent transactions (last MAX_LOOKBACK_DAYS, currently 30 days) */
   recentTransactions: TransactionSummary[];
-  /** Scheduled bills in the next 14 days */
+  /** Scheduled bills in the next 30 days */
   upcomingBills: TransactionSummary[];
   /** Force a refresh from YNAB */
   refresh: () => Promise<void>;

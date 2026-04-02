@@ -115,7 +115,8 @@ export interface FlexibleBreakdownResult {
     /** Budget for the period (weeklyTarget, monthlyTarget, or activity+balance for depletion) */
     periodBudget: number;
     /** Fill ratio (0–1+). effectiveSpent / periodBudget for goal bars,
-     *  activity / totalEnvelope for depletion. Can exceed 1 (overspent). */
+     *  (activity + scheduledOutflows) / (activity + balance) for depletion.
+     *  Can exceed 1 (overspent). */
     fill: number;
     /** Where the "today" marker sits within the bar (0–1). For weekly/monthly goal bars
      *  this is a fixed mid-period marker at 0.5. For depletion there is no

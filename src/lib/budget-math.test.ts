@@ -388,6 +388,31 @@ describe('computeFlexibleBreakdown', () => {
     expect(bar.periodBudget).toBe(100);
     expect(bar.fill).toBeCloseTo(50 / 100); // scheduled counts as committed spending
   });
+
+  it('computes daysUntilFree for over-pace weekly goal via per-txn decay', () => {
+    const cats = [
+      makeCategory({
+        id: '1',
+        name: 'Dining Out',
+        balance: 100,
+        tier: 'flexible',
+        weeklyTarget: 20,
+        goalDisplay: { amount: 20, cadence: 'weekly' },
+      }),
+    ];
+    // $30 spent today on a $20/wk budget → over pace
+    // Today's txn (age=0): impact decays as 30 × (7 - 0 - d) / 7
+    // Day 1: 30 × 6/7 ≈ 25.71 > 20 → still over
+    // Day 2: 30 × 5/7 ≈ 21.43 > 20 → still over
+    // Day 3: 30 × 4/7 ≈ 17.14 ≤ 20 → free!
+    const txns: TransactionInput[] = [
+      makeTransaction({ date: '2026-03-19', amount: -30, categoryName: 'Dining Out' }),
+    ];
+    const result = computeFlexibleBreakdown(cats, txns, 10, '2026-03-19');
+    const { bar } = result[0];
+    expect(bar.fill).toBeGreaterThan(1);
+    expect(bar.daysUntilFree).toBe(3);
+  });
 });
 
 // ---------------------------------------------------------------------------

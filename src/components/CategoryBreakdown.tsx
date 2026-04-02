@@ -100,10 +100,11 @@ function CategoryBar({
   planId: string | null;
 }) {
   const { bar } = cat;
-  const overspent = cat.balance < 0;
+  const isDepletion = bar.mode === 'depletion';
+  // For depletion bars, overspent when fill >= 1 (scheduled txns can push it there)
+  const overspent = isDepletion ? bar.fill >= 1 : cat.balance < 0;
 
   const todayPercent = bar.todayPosition != null ? bar.todayPosition * 100 : null;
-  const isDepletion = bar.mode === 'depletion';
   const hasToday = todayPercent != null;
 
   // Map scheduled events to bar positions.
