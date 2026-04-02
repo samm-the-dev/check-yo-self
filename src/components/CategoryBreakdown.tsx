@@ -100,28 +100,32 @@ function CategoryBar({
   const hasToday = todayPercent != null;
 
   // Map scheduled events to bar positions.
-  // Each event gets a left% (where it starts on the timeline) and width%
-  // (how much budget it consumes). Capped at 100%.
+  // The right edge of each segment aligns with the scheduled date (that's
+  // when the money leaves). Width = how much budget it consumes.
   const todayStr = todayISO();
   // Future half of the bar spans one goal period (7 days for weekly, 30 for monthly).
-  // A date d days from now maps to 0.5 + d/periodDays.
+  // A date d days from now maps to position 0.5 + d/periodDays.
   const periodDays = bar.mode === 'weekly' ? 7 : bar.mode === 'monthly' ? 30 : 0;
   const scheduledSegments =
     !isDepletion && !overspent && bar.scheduledEvents.length > 0
       ? bar.scheduledEvents
           .map((ev) => {
+            // Use UTC to avoid DST-related 23/25-hour day shifts
+            const evParts = ev.date.split('-').map(Number);
+            const todayParts = todayStr.split('-').map(Number);
             const daysFromToday =
-              (new Date(ev.date + 'T00:00:00').getTime() -
-                new Date(todayStr + 'T00:00:00').getTime()) /
+              (Date.UTC(evParts[0], evParts[1] - 1, evParts[2]) -
+                Date.UTC(todayParts[0], todayParts[1] - 1, todayParts[2])) /
               (1000 * 60 * 60 * 24);
-            const left = (0.5 + daysFromToday / periodDays) * 100;
+            const right = (0.5 + daysFromToday / periodDays) * 100;
             const width = bar.periodBudget > 0 ? (ev.amount / bar.periodBudget) * 100 : 0;
+            const left = right - width;
             return { left, width };
           })
-          .filter((s) => s.left < 100 && s.left + s.width > 0)
+          .filter((s) => s.left + s.width > 0 && s.left < 100)
           .map((s) => ({
             left: Math.max(0, s.left),
-            width: Math.min(s.width, 100 - Math.max(0, s.left)),
+            width: Math.min(s.left + s.width, 100) - Math.max(0, s.left),
           }))
       : [];
 
