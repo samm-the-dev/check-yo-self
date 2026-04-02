@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { ChevronDown, ExternalLink, Info } from 'lucide-react';
 import { formatCurrency, todayISO, cn } from '@/lib/utils';
-import { computeBalanceCoverageDays } from '@/lib/budget-math';
 import type { FlexibleCategoryDaily } from '@/types/budget';
 
 interface CategoryBreakdownProps {
@@ -318,17 +317,17 @@ function BarLabel({
     );
   }
 
-  // Balance-based coverage date
-  const balanceDays = computeBalanceCoverageDays(cat.balance, cat.dailyAmount);
-
   let label: string;
   if (bar.mode === 'depletion') {
-    // No-goal: balance-derived dailyAmount is balance/LOOKAHEAD_DAYS, making
-    // balanceDays always equal LOOKAHEAD_DAYS — not useful. Just show remaining.
     label = `${formatCurrency(cat.balance)} remaining`;
   } else if (bar.fill > 1) {
-    // Over pace — spending-is-coverage framing
-    label = `Spending should last through ${formatCoverDate(Math.floor(balanceDays))}`;
+    // Over pace — spending-is-coverage: how many days past the period does
+    // the overspending cover? spentInWindow / dailyRate - periodDays = overage days
+    const dailyRate = bar.periodBudget / (bar.mode === 'weekly' ? 7 : 30);
+    const daysCovered = dailyRate > 0 ? bar.periodSpent / dailyRate : 0;
+    const periodLen = bar.mode === 'weekly' ? 7 : 30;
+    const overageDays = Math.floor(daysCovered - periodLen);
+    label = `Spending should last through ${formatCoverDate(overageDays)}`;
   } else {
     // Under/on pace — show daily allowance
     const remaining = bar.periodBudget - bar.periodSpent;
