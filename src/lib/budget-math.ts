@@ -107,9 +107,16 @@ export interface FlexibleBreakdownResult {
     mode: 'weekly' | 'monthly' | 'depletion';
     /** Spending in the goal period (last 7d for weekly, trailing 30d for monthly, MTD for depletion) */
     periodSpent: number;
+    /** Decay-weighted spending: each txn's impact decays linearly over the period.
+     *  impact = amount × (periodDays - daysSince) / periodDays.
+     *  Models spending as coverage — a grocery run covers meals for several days,
+     *  and each day that passes frees up budget. */
+    effectiveSpent: number;
     /** Budget for the period (weeklyTarget, monthlyTarget, or activity+balance for depletion) */
     periodBudget: number;
-    /** Fill ratio (0–1+). periodSpent / periodBudget. Can exceed 1 (overspent). */
+    /** Fill ratio (0–1+). effectiveSpent / periodBudget for goal bars,
+     *  (activity + scheduledOutflows) / (activity + balance) for depletion.
+     *  Can exceed 1 (overspent). */
     fill: number;
     /** Where the "today" marker sits within the bar (0–1). For weekly/monthly goal bars
      *  this is a fixed mid-period marker at 0.5. For depletion there is no
@@ -118,6 +125,10 @@ export interface FlexibleBreakdownResult {
     /** Upcoming scheduled transactions in this category, with date and amount for
      *  timeline placement on the bar. Sorted by date. */
     scheduledEvents: { date: string; amount: number }[];
+    /** Days until decay-weighted spending drops to the period budget.
+     *  Only set when over pace (fill > 1). Computed from per-txn decay simulation
+     *  so it's consistent with the fill calculation. */
+    daysUntilFree?: number;
   };
 }
 
@@ -231,15 +242,32 @@ export function computeFlexibleBreakdown(
   monthWindowStart.setDate(monthWindowStart.getDate() - MONTHLY_LOOKBACK_DAYS);
   const monthWindowStartStr = formatLocalDate(monthWindowStart);
 
-  // Spending by category across different windows
+  // Helper: calendar day difference (DST-safe)
+  const [ty, tm, td] = todayStr.split('-').map(Number) as [number, number, number];
+  const todayMs = Date.UTC(ty, tm - 1, td);
+  function daysSince(dateStr: string): number {
+    const [y, m, d] = dateStr.split('-').map(Number) as [number, number, number];
+    return (todayMs - Date.UTC(y, m - 1, d)) / (1000 * 60 * 60 * 24);
+  }
+
+  // Spending by category across different windows.
+  // Raw sums (for spentInWindow, velocity) and decay-weighted sums (for bar fill).
+  // Decay: impact = amount × (periodDays - daysSince) / periodDays.
+  // This models spending as coverage — a $20 grocery run covers $2.86/day for 7 days,
+  // and each day that passes "uses up" one day of coverage, freeing budget.
   const spentTodayByCategory = new Map<string, number>();
   const windowSpentByCategory = new Map<string, number>();
   const weekSpentByCategory = new Map<string, number>();
+  const weekDecayByCategory = new Map<string, number>();
+  const weekTxnsByCategory = new Map<string, { age: number; amount: number }[]>();
   const monthSpentByCategory = new Map<string, number>();
+  const monthDecayByCategory = new Map<string, number>();
+  const monthTxnsByCategory = new Map<string, { age: number; amount: number }[]>();
 
   for (const txn of transactions) {
     if (txn.amount >= 0) continue; // skip inflows
     const absAmount = Math.abs(txn.amount);
+    const age = daysSince(txn.date);
 
     if (txn.date === todayStr) {
       const cur = spentTodayByCategory.get(txn.categoryName) ?? 0;
@@ -254,11 +282,25 @@ export function computeFlexibleBreakdown(
     if (txn.date > weekStartStr && txn.date <= todayStr) {
       const cur = weekSpentByCategory.get(txn.categoryName) ?? 0;
       weekSpentByCategory.set(txn.categoryName, cur + absAmount);
+      // Decay-weighted: impact decreases linearly as the txn ages
+      const decay = absAmount * Math.max(0, (7 - age) / 7);
+      const curDecay = weekDecayByCategory.get(txn.categoryName) ?? 0;
+      weekDecayByCategory.set(txn.categoryName, curDecay + decay);
+      // Store per-txn data for daysUntilFree simulation
+      const weekList = weekTxnsByCategory.get(txn.categoryName) ?? [];
+      weekList.push({ age, amount: absAmount });
+      weekTxnsByCategory.set(txn.categoryName, weekList);
     }
     // 30-day lookback: monthWindowStartStr < date <= today
     if (txn.date > monthWindowStartStr && txn.date <= todayStr) {
       const cur = monthSpentByCategory.get(txn.categoryName) ?? 0;
       monthSpentByCategory.set(txn.categoryName, cur + absAmount);
+      const decay = absAmount * Math.max(0, (30 - age) / 30);
+      const curDecay = monthDecayByCategory.get(txn.categoryName) ?? 0;
+      monthDecayByCategory.set(txn.categoryName, curDecay + decay);
+      const monthList = monthTxnsByCategory.get(txn.categoryName) ?? [];
+      monthList.push({ age, amount: absAmount });
+      monthTxnsByCategory.set(txn.categoryName, monthList);
     }
   }
 
@@ -284,6 +326,23 @@ export function computeFlexibleBreakdown(
     }
   }
 
+  // Simulate per-txn decay forward to find how many days until effectiveSpent
+  // drops below periodBudget. Uses the same decay formula as the fill computation.
+  function computeDaysUntilFree(
+    txns: { age: number; amount: number }[],
+    periodDays: number,
+    periodBudget: number,
+  ): number {
+    for (let d = 1; d <= periodDays; d++) {
+      let futureEffective = 0;
+      for (const t of txns) {
+        futureEffective += t.amount * Math.max(0, (periodDays - t.age - d) / periodDays);
+      }
+      if (futureEffective <= periodBudget) return d;
+    }
+    return periodDays;
+  }
+
   const flexCats = categories.filter((c) => c.tier === 'flexible');
 
   return flexCats.map((cat) => {
@@ -300,36 +359,55 @@ export function computeFlexibleBreakdown(
       if (cat.goalDisplay.cadence === 'weekly') {
         // Weekly goal: 7-day sliding window vs weekly target
         const periodSpent = weekSpentByCategory.get(cat.name) ?? 0;
+        const effectiveSpent = weekDecayByCategory.get(cat.name) ?? 0;
         const periodBudget = cat.goalDisplay.amount;
+        const fill = periodBudget > 0 ? effectiveSpent / periodBudget : 0;
         bar = {
           mode: 'weekly',
           periodSpent,
+          effectiveSpent,
           periodBudget,
-          fill: periodBudget > 0 ? periodSpent / periodBudget : 0,
-          todayPosition: 0.5, // today at midpoint of 7+7 window
+          fill,
+          todayPosition: 0.5,
           scheduledEvents,
+          daysUntilFree:
+            fill > 1
+              ? computeDaysUntilFree(weekTxnsByCategory.get(cat.name) ?? [], 7, periodBudget)
+              : undefined,
         };
       } else {
         // Monthly goal: 30-day sliding window vs monthly target
         const periodSpent = monthSpentByCategory.get(cat.name) ?? 0;
+        const effectiveSpent = monthDecayByCategory.get(cat.name) ?? 0;
         const periodBudget = cat.goalDisplay.amount;
+        const fill = periodBudget > 0 ? effectiveSpent / periodBudget : 0;
         bar = {
           mode: 'monthly',
           periodSpent,
+          effectiveSpent,
           periodBudget,
-          fill: periodBudget > 0 ? periodSpent / periodBudget : 0,
-          todayPosition: 0.5, // today at midpoint of 30+30 window
+          fill,
+          todayPosition: 0.5,
           scheduledEvents,
+          daysUntilFree:
+            fill > 1
+              ? computeDaysUntilFree(monthTxnsByCategory.get(cat.name) ?? [], 30, periodBudget)
+              : undefined,
         };
       }
     } else {
-      // No goal: depletion gauge — how much of the envelope is used up
+      // No goal: depletion gauge — how much of the envelope is used up.
+      // Keep original envelope as denominator so the bar accurately reflects
+      // the proportion used. Scheduled outflows count as "committed" spending.
+      const scheduledTotal = scheduledEvents.reduce((sum, ev) => sum + ev.amount, 0);
       const totalEnvelope = cat.activity + cat.balance;
+      const usedPortion = cat.activity + scheduledTotal;
       bar = {
         mode: 'depletion',
         periodSpent: cat.activity,
+        effectiveSpent: usedPortion,
         periodBudget: totalEnvelope,
-        fill: totalEnvelope > 0 ? cat.activity / totalEnvelope : 0,
+        fill: totalEnvelope > 0 ? usedPortion / totalEnvelope : 1,
         todayPosition: null,
         scheduledEvents,
       };

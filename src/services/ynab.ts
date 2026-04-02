@@ -470,14 +470,20 @@ function buildNecessityGate(categoryInputs: CategoryInput[]): NecessityGateStatu
   };
 }
 
-/** Get recent transactions (last 7 days) as summaries */
-export async function getRecentTransactions(days = 7): Promise<TransactionSummary[]> {
+/** Get recent transactions within the lookback window (MAX_LOOKBACK_DAYS) as summaries */
+export async function getRecentTransactions(
+  days = MAX_LOOKBACK_DAYS,
+): Promise<TransactionSummary[]> {
   const transactions = await readCache<ynab.TransactionDetail[]>('transactions');
   if (!transactions) return [];
 
   const cutoff = new Date(todayISO() + 'T00:00:00');
   cutoff.setDate(cutoff.getDate() - days);
-  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  const cutoffStr = [
+    cutoff.getFullYear(),
+    String(cutoff.getMonth() + 1).padStart(2, '0'),
+    String(cutoff.getDate()).padStart(2, '0'),
+  ].join('-');
 
   return transactions
     .filter((t) => t.date >= cutoffStr)
@@ -501,7 +507,11 @@ export async function getUpcomingScheduled(days = 7): Promise<TransactionSummary
   const todayStr = todayISO();
   const cutoff = new Date(todayStr + 'T00:00:00');
   cutoff.setDate(cutoff.getDate() + days);
-  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  const cutoffStr = [
+    cutoff.getFullYear(),
+    String(cutoff.getMonth() + 1).padStart(2, '0'),
+    String(cutoff.getDate()).padStart(2, '0'),
+  ].join('-');
 
   const results: TransactionSummary[] = [];
 

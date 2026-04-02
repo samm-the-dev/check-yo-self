@@ -18,9 +18,9 @@ interface BudgetState {
   syncing: boolean;
   /** The daily budget snapshot (null if not yet loaded) */
   budget: DailyBudgetSnapshot | null;
-  /** Recent transactions (last 7 days) */
+  /** Recent transactions (last MAX_LOOKBACK_DAYS, currently 30 days) */
   recentTransactions: TransactionSummary[];
-  /** Scheduled bills in the next 14 days */
+  /** Scheduled bills in the next 30 days */
   upcomingBills: TransactionSummary[];
   /** Force a refresh from YNAB */
   refresh: () => Promise<void>;
@@ -42,8 +42,8 @@ export function useBudget(): BudgetState {
   const loadFromCache = useCallback(async () => {
     const [snap, txns, bills] = await Promise.all([
       getDailyBudgetSnapshot(),
-      getRecentTransactions(7),
-      getUpcomingScheduled(14),
+      getRecentTransactions(),
+      getUpcomingScheduled(30),
     ]);
     setBudget(snap);
     setRecentTransactions(txns);

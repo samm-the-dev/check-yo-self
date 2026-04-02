@@ -279,9 +279,11 @@ describe('computeFlexibleBreakdown', () => {
     const result = computeFlexibleBreakdown(cats, txns, 10, '2026-03-19');
     const { bar } = result[0];
     expect(bar.mode).toBe('weekly');
-    expect(bar.periodSpent).toBeCloseTo(15); // only 7-day window: 10 + 5
+    expect(bar.periodSpent).toBeCloseTo(15); // raw: 10 + 5
+    // Decay: 10×(6/7) + 5×(3/7) ≈ 8.57 + 2.14 = 10.71
+    expect(bar.effectiveSpent).toBeCloseTo(10.71, 1);
     expect(bar.periodBudget).toBe(30);
-    expect(bar.fill).toBeCloseTo(0.5); // 15/30
+    expect(bar.fill).toBeCloseTo(10.71 / 30, 1); // decay-weighted fill
     expect(bar.todayPosition).toBe(0.5);
   });
 
@@ -306,9 +308,11 @@ describe('computeFlexibleBreakdown', () => {
     const result = computeFlexibleBreakdown(cats, txns, 10, '2026-03-19');
     const { bar } = result[0];
     expect(bar.mode).toBe('monthly');
-    expect(bar.periodSpent).toBeCloseTo(35); // 20 + 15 (within 30 days)
+    expect(bar.periodSpent).toBeCloseTo(35); // raw: 20 + 15
+    // Decay: 20×(29/30) + 15×(12/30) ≈ 19.33 + 6 = 25.33
+    expect(bar.effectiveSpent).toBeCloseTo(25.33, 0);
     expect(bar.periodBudget).toBe(90);
-    expect(bar.fill).toBeCloseTo(35 / 90);
+    expect(bar.fill).toBeCloseTo(25.33 / 90, 1); // decay-weighted fill
     expect(bar.todayPosition).toBe(0.5);
   });
 
@@ -355,6 +359,59 @@ describe('computeFlexibleBreakdown', () => {
     expect(result[0].bar.scheduledEvents).toHaveLength(1);
     expect(result[0].bar.scheduledEvents[0].date).toBe('2026-03-22');
     expect(result[0].bar.scheduledEvents[0].amount).toBeCloseTo(50);
+  });
+
+  it('depletion bar subtracts scheduled outflows from remaining balance', () => {
+    const cats = [
+      makeCategory({
+        id: '1',
+        name: 'Misc',
+        balance: 70,
+        tier: 'flexible',
+        activity: 30,
+      }),
+    ];
+    const scheduled: ScheduledTransactionInput[] = [
+      makeScheduled({
+        dateNext: '2026-03-22',
+        amount: -20,
+        frequency: 'never',
+        categoryName: 'Misc',
+        payeeName: 'Subscription',
+      }),
+    ];
+    const result = computeFlexibleBreakdown(cats, [], 10, '2026-03-19', scheduled);
+    const { bar } = result[0];
+    expect(bar.mode).toBe('depletion');
+    // totalEnvelope = activity + balance = 30 + 70 = 100 (original, not reduced)
+    // usedPortion = activity + scheduled = 30 + 20 = 50
+    expect(bar.periodBudget).toBe(100);
+    expect(bar.fill).toBeCloseTo(50 / 100); // scheduled counts as committed spending
+  });
+
+  it('computes daysUntilFree for over-pace weekly goal via per-txn decay', () => {
+    const cats = [
+      makeCategory({
+        id: '1',
+        name: 'Dining Out',
+        balance: 100,
+        tier: 'flexible',
+        weeklyTarget: 20,
+        goalDisplay: { amount: 20, cadence: 'weekly' },
+      }),
+    ];
+    // $30 spent today on a $20/wk budget → over pace
+    // Today's txn (age=0): impact decays as 30 × (7 - 0 - d) / 7
+    // Day 1: 30 × 6/7 ≈ 25.71 > 20 → still over
+    // Day 2: 30 × 5/7 ≈ 21.43 > 20 → still over
+    // Day 3: 30 × 4/7 ≈ 17.14 ≤ 20 → free!
+    const txns: TransactionInput[] = [
+      makeTransaction({ date: '2026-03-19', amount: -30, categoryName: 'Dining Out' }),
+    ];
+    const result = computeFlexibleBreakdown(cats, txns, 10, '2026-03-19');
+    const { bar } = result[0];
+    expect(bar.fill).toBeGreaterThan(1);
+    expect(bar.daysUntilFree).toBe(3);
   });
 });
 

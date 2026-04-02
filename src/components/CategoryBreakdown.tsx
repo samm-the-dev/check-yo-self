@@ -50,14 +50,19 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
       {methodologyOpen && (
         <div className="text-muted-foreground space-y-2 text-xs leading-relaxed">
           <p>
-            Each bar shows how much of your budget you've used. For categories with a spending goal,
-            the bar compares your recent spending against your weekly or monthly target. The marker
-            shows today — left means room to spend, right means you've spent ahead of pace.
+            Each bar shows your spending pressure. For categories with a spending goal, the bar
+            reflects how much budget your recent spending has consumed. The marker shows today —
+            left means room to spend, right means you've spent ahead of pace.
           </p>
           <p>
-            <strong>Weekly goals</strong> look at your last 7 days of spending.{' '}
-            <strong>Monthly goals</strong> look at the last 30 days. Categories without a goal show
-            how much of the envelope balance has been used this month.
+            Spending impact fades over time — a grocery run today uses your full weekly budget, but
+            each day that passes frees up a day's worth. This means your available amount gradually
+            recovers as time passes, even without new spending.
+          </p>
+          <p>
+            <strong>Weekly goals</strong> look at your last 7 days. <strong>Monthly goals</strong>{' '}
+            look at the last 30 days. Categories without a goal show how much of the envelope
+            balance has been used, including upcoming scheduled transactions.
           </p>
           {catsWithoutGoals.length > 0 && (
             <div className="border-warning/30 bg-warning/5 rounded-md border px-3 py-2">
@@ -73,7 +78,12 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
 
       <div className="space-y-1">
         {categories.map((cat) => (
-          <CategoryBar key={`${cat.groupName}-${cat.name}`} cat={cat} categories={categories} planId={planId} />
+          <CategoryBar
+            key={`${cat.groupName}-${cat.name}`}
+            cat={cat}
+            categories={categories}
+            planId={planId}
+          />
         ))}
       </div>
     </section>
@@ -90,10 +100,11 @@ function CategoryBar({
   planId: string | null;
 }) {
   const { bar } = cat;
-  const overspent = cat.balance < 0;
+  const isDepletion = bar.mode === 'depletion';
+  // For depletion bars, overspent when fill >= 1 (scheduled txns can push it there)
+  const overspent = isDepletion ? bar.fill >= 1 : cat.balance < 0;
 
   const todayPercent = bar.todayPosition != null ? bar.todayPosition * 100 : null;
-  const isDepletion = bar.mode === 'depletion';
   const hasToday = todayPercent != null;
 
   // Map scheduled events to bar positions.
@@ -160,12 +171,13 @@ function CategoryBar({
       <div className="relative mt-1.5 h-1.5 rounded-full">
         {isDepletion ? (
           <>
-            {/* Depletion bar: remaining balance shown as green fill from right,
-                spent portion is the empty/warm-toned left side */}
+            {/* Depletion bar: red (fully spent) → yellow → green (fully remaining).
+                Mirror of goal bars' green → yellow → red, just flipped. */}
             <div
               className="absolute inset-0 rounded-full"
               style={{
-                background: 'linear-gradient(to right, hsl(38 92% 50%), hsl(152 60% 50%))',
+                background:
+                  'linear-gradient(to right, hsl(0 65% 50%), hsl(38 92% 50%), hsl(152 60% 50%))',
                 opacity: 0.2,
               }}
             />
@@ -174,7 +186,7 @@ function CategoryBar({
                 className="absolute inset-0 rounded-full"
                 style={{ background: 'hsl(0 65% 50%)' }}
               />
-            ) : (
+            ) : bar.fill >= 1 ? null : (
               <div
                 className="absolute inset-y-0 right-0 overflow-hidden rounded-full transition-all"
                 style={{ width: `${(1 - bar.fill) * 100}%` }}
@@ -184,7 +196,8 @@ function CategoryBar({
                   style={{
                     width: `${100 / Math.max(1 - bar.fill, 0.05)}%`,
                     marginLeft: 'auto',
-                    background: 'linear-gradient(to right, hsl(38 92% 50%), hsl(152 60% 50%))',
+                    background:
+                      'linear-gradient(to right, hsl(0 65% 50%), hsl(38 92% 50%), hsl(152 60% 50%))',
                   }}
                 />
               </div>
@@ -325,21 +338,26 @@ function BarLabel({
 
   let label: string;
   if (bar.mode === 'depletion') {
-    label = `${formatCurrency(cat.balance)} remaining`;
+    const scheduledTotal = bar.scheduledEvents.reduce((sum, ev) => sum + ev.amount, 0);
+    const effective = cat.balance - scheduledTotal;
+    if (scheduledTotal > 0) {
+      label =
+        effective >= 0
+          ? `${formatCurrency(effective)} available after upcoming`
+          : `${formatCurrency(Math.abs(effective))} short after upcoming`;
+    } else {
+      label = `${formatCurrency(cat.balance)} remaining`;
+    }
   } else if (bar.fill > 1) {
-    // Over pace — spending-is-coverage: how many days past the period does
-    // the overspending cover? spentInWindow / dailyRate - periodDays = overage days
-    const dailyRate = bar.periodBudget / (bar.mode === 'weekly' ? 7 : 30);
-    const daysCovered = dailyRate > 0 ? bar.periodSpent / dailyRate : 0;
-    const periodLen = bar.mode === 'weekly' ? 7 : 30;
-    const overageDays = Math.floor(daysCovered - periodLen);
-    label = `Spending should last through ${formatCoverDate(overageDays)}`;
+    // Over pace — daysUntilFree is computed in budget-math from per-txn decay
+    // simulation, so it's consistent with the fill calculation.
+    label = `Spending should last through ${formatCoverDate(bar.daysUntilFree ?? 0)}`;
   } else {
-    // Under/on pace — show daily allowance
-    const remaining = bar.periodBudget - bar.periodSpent;
-    const periodLabel = bar.mode === 'weekly' ? 7 : 30;
-    const dailyRemaining = Math.max(0, remaining / periodLabel);
-    label = `Can spend ${formatCurrency(dailyRemaining)} today and stay on pace`;
+    // Under/on pace — show available budget (periodBudget - effectiveSpent).
+    // This is the total you can spend today: past spending has decayed,
+    // freeing up budget as days pass.
+    const available = Math.max(0, bar.periodBudget - bar.effectiveSpent);
+    label = `Can spend ${formatCurrency(available)} today and stay on pace`;
   }
 
   return (
