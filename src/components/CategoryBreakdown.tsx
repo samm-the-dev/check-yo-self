@@ -125,14 +125,25 @@ function CategoryBar({
           }))
       : [];
 
-  // Expand the fill to account for scheduled segments it would overlap.
-  // This makes segments visually "punch through" the fill — the fill grows
-  // to jump over them, so they remain visible in their reserved space.
+  // Iteratively expand the fill to jump over scheduled segments.
+  // Each segment the fill reaches pushes it further, which may cause it
+  // to reach the next segment, and so on.
   const baseFill = overspent ? 100 : Math.min(bar.fill, 1) * 100;
-  const overlappingSegmentWidth = scheduledSegments
-    .filter((s) => s.left < baseFill)
-    .reduce((sum, s) => sum + Math.min(s.width, baseFill - s.left), 0);
-  const fillPercent = Math.min(baseFill + overlappingSegmentWidth, 100);
+  let fillPercent = baseFill;
+  if (scheduledSegments.length > 0) {
+    const sorted = [...scheduledSegments].sort((a, b) => a.left - b.left);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const seg of sorted) {
+        if (seg.left < fillPercent && seg.left + seg.width > fillPercent) {
+          // Fill reaches into this segment — push past it
+          fillPercent = Math.min(seg.left + seg.width, 100);
+          changed = true;
+        }
+      }
+    }
+  }
 
   return (
     <div className="py-1.5">
