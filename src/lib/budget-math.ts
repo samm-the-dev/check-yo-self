@@ -272,9 +272,7 @@ export function computeFlexibleBreakdown(
     const events = materializeFutureEvents(scheduledTransactions, todayStr, horizonStr);
     for (const ev of events) {
       if (ev.amount >= 0) continue; // only outflows
-      // Match by category name from the source scheduled transaction
-      const st = scheduledTransactions.find((s) => s.payeeName === ev.label);
-      const catName = st?.categoryName;
+      const catName = ev.categoryName;
       if (!catName) continue;
       const list = scheduledByCategory.get(catName) ?? [];
       list.push({ date: ev.date, amount: Math.abs(ev.amount) });
@@ -553,6 +551,8 @@ export interface MaterializedEvent {
   type: 'income' | 'bill';
   hitsChecking: boolean;
   source: CashflowEventSource;
+  /** Category name from the source scheduled transaction */
+  categoryName: string;
 }
 
 /**
@@ -574,6 +574,7 @@ export function materializeFutureEvents(
       type: (t.amount < 0 ? 'bill' : 'income') as 'income' | 'bill',
       hitsChecking: t.hitsChecking,
       source: (t.source ?? 'scheduled') as CashflowEventSource,
+      categoryName: t.categoryName,
     };
 
     if (t.frequency === 'never') {
@@ -582,14 +583,14 @@ export function materializeFutureEvents(
       }
     } else {
       const d = new Date(t.dateNext + 'T00:00:00');
-      while (d.toISOString().slice(0, 10) <= today) {
+      while (formatLocalDate(d) <= today) {
         if (!advanceByYnabFrequency(d, t.frequency)) break;
       }
-      let dateStr = d.toISOString().slice(0, 10);
+      let dateStr = formatLocalDate(d);
       while (dateStr <= horizonStr) {
         events.push({ ...base, date: dateStr });
         if (!advanceByYnabFrequency(d, t.frequency)) break;
-        dateStr = d.toISOString().slice(0, 10);
+        dateStr = formatLocalDate(d);
       }
     }
   }
