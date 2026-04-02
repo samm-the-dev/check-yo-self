@@ -96,9 +96,7 @@ function CategoryBar({
   // Bar fill: clamp to [0,1] for CSS width
   const fillPercent = overspent ? 100 : Math.min(bar.fill, 1) * 100;
   const todayPercent = bar.todayPosition != null ? bar.todayPosition * 100 : null;
-
-  // For goal-based bars: gradient from green → yellow (at today) → red
-  // For depletion bars: solid fill from green to yellow based on usage
+  const isDepletion = bar.mode === 'depletion';
   const hasToday = todayPercent != null;
 
   return (
@@ -108,61 +106,92 @@ function CategoryBar({
         <span className="text-muted-foreground text-xs tabular-nums">{paceLabel(cat)}</span>
       </div>
       <div className="relative mt-1.5 h-1.5 rounded-full">
-        {/* Track — full-width gradient at low opacity */}
-        <div
-          className="absolute inset-0 rounded-full"
-          style={{
-            background: hasToday
-              ? `linear-gradient(to right, hsl(152 60% 50%), hsl(38 92% 50%) ${todayPercent}%, hsl(0 65% 50%))`
-              : 'linear-gradient(to right, hsl(152 60% 50%), hsl(38 92% 50%))',
-            opacity: 0.2,
-          }}
-        />
-        {/* Fill — clips the same full-width gradient at full opacity */}
-        {overspent ? (
-          <div
-            className="absolute inset-0 rounded-full"
-            style={{ background: 'hsl(0 65% 50%)' }}
-          />
-        ) : fillPercent > 0 ? (
-          <div
-            className="absolute inset-y-0 left-0 overflow-hidden rounded-full transition-all"
-            style={{ width: `${fillPercent}%` }}
-          >
+        {isDepletion ? (
+          <>
+            {/* Depletion bar: remaining balance shown as green fill from right,
+                spent portion is the empty/warm-toned left side */}
             <div
-              className="h-full rounded-full"
+              className="absolute inset-0 rounded-full"
               style={{
-                width: `${100 / Math.max(fillPercent / 100, 0.05)}%`,
-                background: hasToday
-                  ? `linear-gradient(to right, hsl(152 60% 50%), hsl(38 92% 50%) ${todayPercent}%, hsl(0 65% 50%))`
-                  : 'linear-gradient(to right, hsl(152 60% 50%), hsl(38 92% 50%))',
+                background: 'linear-gradient(to right, hsl(38 92% 50%), hsl(152 60% 50%))',
+                opacity: 0.2,
               }}
             />
-          </div>
-        ) : null}
-        {/* Today marker — only for goal-based bars */}
-        {hasToday && (
-          <div
-            className="absolute top-0 bottom-0"
-            style={{ left: `${todayPercent}%`, transform: 'translateX(-50%)' }}
-          >
+            {overspent ? (
+              <div
+                className="absolute inset-0 rounded-full"
+                style={{ background: 'hsl(0 65% 50%)' }}
+              />
+            ) : (
+              <div
+                className="absolute inset-y-0 right-0 overflow-hidden rounded-full transition-all"
+                style={{ width: `${(1 - bar.fill) * 100}%` }}
+              >
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${100 / Math.max(1 - bar.fill, 0.05)}%`,
+                    marginLeft: 'auto',
+                    background: 'linear-gradient(to right, hsl(38 92% 50%), hsl(152 60% 50%))',
+                  }}
+                />
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {/* Goal-based bar: gradient from green → yellow (at today) → red */}
             <div
-              className="absolute bottom-full"
+              className="absolute inset-0 rounded-full"
               style={{
-                width: 0,
-                height: 0,
-                borderLeft: '4px solid transparent',
-                borderRight: '4px solid transparent',
-                borderTop: '5px solid currentColor',
-                left: '50%',
-                transform: 'translateX(-50%)',
+                background: `linear-gradient(to right, hsl(152 60% 50%), hsl(38 92% 50%) ${todayPercent}%, hsl(0 65% 50%))`,
+                opacity: 0.2,
               }}
             />
-            <div
-              className="bg-foreground/70 absolute inset-y-0 w-[1.5px]"
-              style={{ left: '50%', transform: 'translateX(-50%)' }}
-            />
-          </div>
+            {overspent ? (
+              <div
+                className="absolute inset-0 rounded-full"
+                style={{ background: 'hsl(0 65% 50%)' }}
+              />
+            ) : fillPercent > 0 ? (
+              <div
+                className="absolute inset-y-0 left-0 overflow-hidden rounded-full transition-all"
+                style={{ width: `${fillPercent}%` }}
+              >
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${100 / Math.max(fillPercent / 100, 0.05)}%`,
+                    background: `linear-gradient(to right, hsl(152 60% 50%), hsl(38 92% 50%) ${todayPercent}%, hsl(0 65% 50%))`,
+                  }}
+                />
+              </div>
+            ) : null}
+            {/* Today marker */}
+            {hasToday && (
+              <div
+                className="absolute top-0 bottom-0"
+                style={{ left: `${todayPercent}%`, transform: 'translateX(-50%)' }}
+              >
+                <div
+                  className="absolute bottom-full"
+                  style={{
+                    width: 0,
+                    height: 0,
+                    borderLeft: '4px solid transparent',
+                    borderRight: '4px solid transparent',
+                    borderTop: '5px solid currentColor',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                  }}
+                />
+                <div
+                  className="bg-foreground/70 absolute inset-y-0 w-[1.5px]"
+                  style={{ left: '50%', transform: 'translateX(-50%)' }}
+                />
+              </div>
+            )}
+          </>
         )}
       </div>
       <BarLabel cat={cat} categories={categories} planId={planId} />
@@ -240,8 +269,8 @@ function BarLabel({
         ? `Balance will last through ${formatCoverDate(Math.floor(balanceDays))}`
         : `${formatCurrency(cat.balance)} remaining`;
   } else if (bar.fill > 1) {
-    // Over pace — show what date the overspending covers through
-    label = `Over pace — balance will last through ${formatCoverDate(Math.floor(balanceDays))}`;
+    // Over pace — spending-is-coverage framing
+    label = `Spending should last through ${formatCoverDate(Math.floor(balanceDays))}`;
   } else {
     // Under/on pace — show daily allowance
     const remaining = bar.periodBudget - bar.periodSpent;
