@@ -93,8 +93,6 @@ function CategoryBar({
   const { bar } = cat;
   const overspent = cat.balance < 0;
 
-  // Bar fill: clamp to [0,1] for CSS width
-  const fillPercent = overspent ? 100 : Math.min(bar.fill, 1) * 100;
   const todayPercent = bar.todayPosition != null ? bar.todayPosition * 100 : null;
   const isDepletion = bar.mode === 'depletion';
   const hasToday = todayPercent != null;
@@ -126,6 +124,15 @@ function CategoryBar({
             width: Math.min(s.left + s.width, 100) - Math.max(0, s.left),
           }))
       : [];
+
+  // Expand the fill to account for scheduled segments it would overlap.
+  // This makes segments visually "punch through" the fill — the fill grows
+  // to jump over them, so they remain visible in their reserved space.
+  const baseFill = overspent ? 100 : Math.min(bar.fill, 1) * 100;
+  const overlappingSegmentWidth = scheduledSegments
+    .filter((s) => s.left < baseFill)
+    .reduce((sum, s) => sum + Math.min(s.width, baseFill - s.left), 0);
+  const fillPercent = Math.min(baseFill + overlappingSegmentWidth, 100);
 
   return (
     <div className="py-1.5">
