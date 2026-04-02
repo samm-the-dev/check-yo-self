@@ -302,14 +302,6 @@ function BarLabel({
   const { bar } = cat;
   const overspent = cat.balance < 0;
 
-  // YNAB-computed shortfall: how much more needs to be budgeted to meet the goal
-  const warningEl =
-    cat.goalUnderFunded != null && cat.goalUnderFunded > 0 && !cat.goalSnoozed ? (
-      <span className="text-warning text-[10px]">
-        Budget {formatCurrency(cat.goalUnderFunded)} under target
-      </span>
-    ) : null;
-
   if (overspent) {
     const overspendAmt = Math.abs(cat.balance);
     const catKey = `${cat.groupName}-${cat.name}`;
@@ -323,12 +315,9 @@ function BarLabel({
       .sort((a, b) => b.balance - a.balance)[0];
     return (
       <div className="mt-1 space-y-0.5">
-        <div className="flex items-baseline justify-between">
-          <p className="text-destructive text-xs">
-            Overspent by {formatCurrency(overspendAmt)} in category
-          </p>
-          {warningEl}
-        </div>
+        <p className="text-destructive text-xs">
+          Overspent by {formatCurrency(overspendAmt)} in category
+        </p>
         {donor && (
           <p className="text-muted-foreground text-xs">
             {donor.name} has {formatCurrency(donor.balance)} available
@@ -373,10 +362,5 @@ function BarLabel({
     label = `Can spend ${formatCurrency(available)} today and stay on pace`;
   }
 
-  return (
-    <div className="mt-1 flex items-baseline justify-between">
-      <p className="text-muted-foreground text-xs">{label}</p>
-      {warningEl}
-    </div>
-  );
+  return <p className="text-muted-foreground mt-1 text-xs">{label}</p>;
 }

@@ -1,6 +1,6 @@
 /** Cached YNAB API response — avoids hitting rate limits on every render */
 export interface YnabCache {
-  /** Cache key: 'categories' | 'accounts' | 'transactions' | 'month' | 'scheduled' */
+  /** Cache key: 'categories' | 'accounts' | 'transactions' | 'scheduled' */
   key: string;
   /** JSON-serialized YNAB API response */
   data: string;
