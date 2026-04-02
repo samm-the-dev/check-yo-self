@@ -222,7 +222,12 @@ export async function syncYnabData(force = false): Promise<void> {
   // as since_date dropped prior-month transactions on the 1st).
   const lookbackDate = new Date(today + 'T00:00:00');
   lookbackDate.setDate(lookbackDate.getDate() - LOOKBACK_DAYS);
-  const sinceDate = lookbackDate.toISOString().slice(0, 10);
+  // Format as local date to avoid UTC timezone shift (toISOString can be off by a day)
+  const sinceDate = [
+    lookbackDate.getFullYear(),
+    String(lookbackDate.getMonth() + 1).padStart(2, '0'),
+    String(lookbackDate.getDate()).padStart(2, '0'),
+  ].join('-');
 
   const tasks: Promise<void>[] = [];
 

@@ -216,7 +216,7 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
                 const label =
                   balanceDays > LOOKBACK_DAYS
                     ? `Should cover through ${formatCoverDate(Math.floor(balanceDays))}`
-                    : `Can spend ${formatCurrency((cat.windowAmount - cat.spentInWindow) / LOOKBACK_DAYS)} today and stay on pace`;
+                    : `Can spend ${formatCurrency(Math.max(0, (cat.windowAmount - cat.spentInWindow) / LOOKBACK_DAYS))} today and stay on pace`;
 
                 return (
                   <div className="mt-1 flex items-baseline justify-between">
