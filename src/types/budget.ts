@@ -56,6 +56,7 @@ export interface FlexibleCategoryDaily {
     fill: number;
     todayPosition: number | null;
     scheduledEvents: { date: string; amount: number }[];
+    daysUntilFree?: number;
   };
 }
 

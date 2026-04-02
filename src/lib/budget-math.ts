@@ -124,6 +124,10 @@ export interface FlexibleBreakdownResult {
     /** Upcoming scheduled transactions in this category, with date and amount for
      *  timeline placement on the bar. Sorted by date. */
     scheduledEvents: { date: string; amount: number }[];
+    /** Days until decay-weighted spending drops to the period budget.
+     *  Only set when over pace (fill > 1). Computed from per-txn decay simulation
+     *  so it's consistent with the fill calculation. */
+    daysUntilFree?: number;
   };
 }
 
@@ -254,8 +258,10 @@ export function computeFlexibleBreakdown(
   const windowSpentByCategory = new Map<string, number>();
   const weekSpentByCategory = new Map<string, number>();
   const weekDecayByCategory = new Map<string, number>();
+  const weekTxnsByCategory = new Map<string, { age: number; amount: number }[]>();
   const monthSpentByCategory = new Map<string, number>();
   const monthDecayByCategory = new Map<string, number>();
+  const monthTxnsByCategory = new Map<string, { age: number; amount: number }[]>();
 
   for (const txn of transactions) {
     if (txn.amount >= 0) continue; // skip inflows
@@ -279,6 +285,10 @@ export function computeFlexibleBreakdown(
       const decay = absAmount * Math.max(0, (7 - age) / 7);
       const curDecay = weekDecayByCategory.get(txn.categoryName) ?? 0;
       weekDecayByCategory.set(txn.categoryName, curDecay + decay);
+      // Store per-txn data for daysUntilFree simulation
+      const weekList = weekTxnsByCategory.get(txn.categoryName) ?? [];
+      weekList.push({ age, amount: absAmount });
+      weekTxnsByCategory.set(txn.categoryName, weekList);
     }
     // 30-day lookback: monthWindowStartStr < date <= today
     if (txn.date > monthWindowStartStr && txn.date <= todayStr) {
@@ -287,6 +297,9 @@ export function computeFlexibleBreakdown(
       const decay = absAmount * Math.max(0, (30 - age) / 30);
       const curDecay = monthDecayByCategory.get(txn.categoryName) ?? 0;
       monthDecayByCategory.set(txn.categoryName, curDecay + decay);
+      const monthList = monthTxnsByCategory.get(txn.categoryName) ?? [];
+      monthList.push({ age, amount: absAmount });
+      monthTxnsByCategory.set(txn.categoryName, monthList);
     }
   }
 
@@ -312,6 +325,23 @@ export function computeFlexibleBreakdown(
     }
   }
 
+  // Simulate per-txn decay forward to find how many days until effectiveSpent
+  // drops below periodBudget. Uses the same decay formula as the fill computation.
+  function computeDaysUntilFree(
+    txns: { age: number; amount: number }[],
+    periodDays: number,
+    periodBudget: number,
+  ): number {
+    for (let d = 1; d <= periodDays; d++) {
+      let futureEffective = 0;
+      for (const t of txns) {
+        futureEffective += t.amount * Math.max(0, (periodDays - t.age - d) / periodDays);
+      }
+      if (futureEffective <= periodBudget) return d;
+    }
+    return periodDays;
+  }
+
   const flexCats = categories.filter((c) => c.tier === 'flexible');
 
   return flexCats.map((cat) => {
@@ -330,28 +360,38 @@ export function computeFlexibleBreakdown(
         const periodSpent = weekSpentByCategory.get(cat.name) ?? 0;
         const effectiveSpent = weekDecayByCategory.get(cat.name) ?? 0;
         const periodBudget = cat.goalDisplay.amount;
+        const fill = periodBudget > 0 ? effectiveSpent / periodBudget : 0;
         bar = {
           mode: 'weekly',
           periodSpent,
           effectiveSpent,
           periodBudget,
-          fill: periodBudget > 0 ? effectiveSpent / periodBudget : 0,
+          fill,
           todayPosition: 0.5,
           scheduledEvents,
+          daysUntilFree:
+            fill > 1
+              ? computeDaysUntilFree(weekTxnsByCategory.get(cat.name) ?? [], 7, periodBudget)
+              : undefined,
         };
       } else {
         // Monthly goal: 30-day sliding window vs monthly target
         const periodSpent = monthSpentByCategory.get(cat.name) ?? 0;
         const effectiveSpent = monthDecayByCategory.get(cat.name) ?? 0;
         const periodBudget = cat.goalDisplay.amount;
+        const fill = periodBudget > 0 ? effectiveSpent / periodBudget : 0;
         bar = {
           mode: 'monthly',
           periodSpent,
           effectiveSpent,
           periodBudget,
-          fill: periodBudget > 0 ? effectiveSpent / periodBudget : 0,
+          fill,
           todayPosition: 0.5,
           scheduledEvents,
+          daysUntilFree:
+            fill > 1
+              ? computeDaysUntilFree(monthTxnsByCategory.get(cat.name) ?? [], 30, periodBudget)
+              : undefined,
         };
       }
     } else {

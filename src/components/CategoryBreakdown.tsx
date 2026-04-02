@@ -348,14 +348,9 @@ function BarLabel({
       label = `${formatCurrency(cat.balance)} remaining`;
     }
   } else if (bar.fill > 1) {
-    // Over pace — spending-is-coverage: how many days until effective spend
-    // decays below the budget? Each txn decays at amount/periodDays per day,
-    // so the total decay rate is proportional to raw periodSpent.
-    const periodDays = bar.mode === 'weekly' ? 7 : 30;
-    const decayRate = bar.periodSpent / periodDays;
-    const overageAmount = bar.effectiveSpent - bar.periodBudget;
-    const daysUntilFree = decayRate > 0 ? Math.ceil(overageAmount / decayRate) : 0;
-    label = `Spending should last through ${formatCoverDate(daysUntilFree)}`;
+    // Over pace — daysUntilFree is computed in budget-math from per-txn decay
+    // simulation, so it's consistent with the fill calculation.
+    label = `Spending should last through ${formatCoverDate(bar.daysUntilFree ?? 0)}`;
   } else {
     // Under/on pace — show available budget (periodBudget - effectiveSpent).
     // This is the total you can spend today: past spending has decayed,
