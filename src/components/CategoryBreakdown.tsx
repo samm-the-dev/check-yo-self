@@ -103,7 +103,9 @@ function CategoryBar({
   // Each event gets a left% (where it starts on the timeline) and width%
   // (how much budget it consumes). Capped at 100%.
   const todayStr = todayISO();
-  const windowDays = bar.mode === 'weekly' ? 14 : bar.mode === 'monthly' ? 60 : 0;
+  // Future half of the bar spans one goal period (7 days for weekly, 30 for monthly).
+  // A date d days from now maps to 0.5 + d/periodDays.
+  const periodDays = bar.mode === 'weekly' ? 7 : bar.mode === 'monthly' ? 30 : 0;
   const scheduledSegments =
     !isDepletion && !overspent && bar.scheduledEvents.length > 0
       ? bar.scheduledEvents
@@ -112,7 +114,7 @@ function CategoryBar({
               (new Date(ev.date + 'T00:00:00').getTime() -
                 new Date(todayStr + 'T00:00:00').getTime()) /
               (1000 * 60 * 60 * 24);
-            const left = (0.5 + daysFromToday / windowDays) * 100;
+            const left = (0.5 + daysFromToday / periodDays) * 100;
             const width = bar.periodBudget > 0 ? (ev.amount / bar.periodBudget) * 100 : 0;
             return { left, width };
           })
@@ -300,11 +302,9 @@ function BarLabel({
 
   let label: string;
   if (bar.mode === 'depletion') {
-    // No-goal: show remaining balance context
-    label =
-      balanceDays > 0
-        ? `Balance will last through ${formatCoverDate(Math.floor(balanceDays))}`
-        : `${formatCurrency(cat.balance)} remaining`;
+    // No-goal: balance-derived dailyAmount is balance/LOOKAHEAD_DAYS, making
+    // balanceDays always equal LOOKAHEAD_DAYS — not useful. Just show remaining.
+    label = `${formatCurrency(cat.balance)} remaining`;
   } else if (bar.fill > 1) {
     // Over pace — spending-is-coverage framing
     label = `Spending should last through ${formatCoverDate(Math.floor(balanceDays))}`;

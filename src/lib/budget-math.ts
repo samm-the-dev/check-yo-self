@@ -204,7 +204,7 @@ export function computeTotalAvailable(categories: CategoryInput[]): number {
  *
  * Each category gets a `bar` object with period-aware fill data:
  * - Weekly goal: 7-day sliding window vs weekly target
- * - Monthly goal: calendar month-to-date vs monthly target
+ * - Monthly goal: trailing MONTHLY_LOOKBACK_DAYS window vs monthly target
  * - No goal: depletion gauge (activity / (activity + balance))
  */
 export function computeFlexibleBreakdown(
