@@ -9,6 +9,7 @@ import {
   materializeFutureEvents,
   LOOKBACK_DAYS,
   LOOKAHEAD_DAYS,
+  VELOCITY_LOOKBACK_DAYS,
   type TransactionInput,
   type ScheduledTransactionInput,
 } from '@/lib/budget-math';
@@ -166,10 +167,16 @@ export async function getCashflowSnapshot(
     }
   }
 
-  // Compute spending velocity from actual flex outflows (14-day rolling avg).
+  // Compute spending velocity from actual flex outflows (7-day rolling avg).
+  // Shorter window is more responsive to recent behavior changes.
   // Falls back to budget-derived dailyAmount when no transaction data exists.
   const flexNames = new Set(budget?.flexibleBreakdown?.map((c) => c.name) ?? []);
-  const velocity = computeSpendingVelocity(allTransactions, flexNames, today);
+  const velocity = computeSpendingVelocity(
+    allTransactions,
+    flexNames,
+    today,
+    VELOCITY_LOOKBACK_DAYS,
+  );
   const projectedDailySpend = velocity > 0 ? velocity : (budget?.dailyAmount ?? 0);
 
   // Delegate projection to budget-math
@@ -220,12 +227,22 @@ export async function getCashflowSnapshot(
     (t) => t.amount > 0 && !incomeFrequencies.has(t.frequency),
   );
 
+  // Velocity window start date (for chart reference line)
+  const velStart = new Date(today + 'T00:00:00');
+  velStart.setDate(velStart.getDate() - VELOCITY_LOOKBACK_DAYS);
+  const velocityWindowStart = [
+    velStart.getFullYear(),
+    String(velStart.getMonth() + 1).padStart(2, '0'),
+    String(velStart.getDate()).padStart(2, '0'),
+  ].join('-');
+
   return {
     checkingBalance,
     totalBudgeted,
     cashflowWarning,
     scheduledCount,
     hasRecurringIncome,
+    velocityWindowStart,
     projection,
   };
 }

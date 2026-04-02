@@ -9,8 +9,9 @@
  * - dailyAmount = totalAvailable / LOOKAHEAD_DAYS (rolling horizon, month-agnostic).
  *   Used as the budget guardrail on the dashboard and for per-category pace.
  * - windowAmount = dailyAmount * LOOKBACK_DAYS (same rate, expressed per-window).
- * - spendingVelocity = 14-day rolling average of actual flex outflows.
- *   Used for the cashflow committed-line drawdown (descriptive, not prescriptive).
+ * - spendingVelocity = rolling average of actual flex outflows (default 14 days,
+ *   cashflow projection uses VELOCITY_LOOKBACK_DAYS=7 for faster response).
+ *   Used for the cashflow projected-line drawdown (descriptive, not prescriptive).
  * - Cashflow projection anchors on today's checking balance. Past days are
  *   reconstructed from actual transactions. Future days subtract spendingVelocity
  *   (flex spend only) and apply only hitsChecking scheduled transactions.
@@ -251,6 +252,10 @@ export const LOOKBACK_DAYS = 14;
 /** Canonical lookahead window used across the app (days) */
 export const LOOKAHEAD_DAYS = 14;
 
+/** Shorter lookback for spending velocity used in the cashflow projection.
+ *  More responsive to recent behavior changes than the full LOOKBACK_DAYS window. */
+export const VELOCITY_LOOKBACK_DAYS = 7;
+
 /**
  * Compute average daily spending velocity from recent flexible-category outflows.
  *
@@ -307,7 +312,8 @@ export function computePaceOverspend(
  *
  * 0 = no spending (bar empty). LOOKBACK_DAYS (14) = exactly on pace (bar at
  * today marker). > LOOKBACK_DAYS = ahead of pace (bar past today, spending
- * covers future days). Capped at LOOKBACK_DAYS + LOOKAHEAD_DAYS (28).
+ * covers future days). Not capped — the bar clips naturally at 100% width;
+ * the text label uses the real value for an honest "cover through" date.
  */
 export function computeCoverageDays(
   balance: number,
@@ -317,8 +323,22 @@ export function computeCoverageDays(
   if (spentInWindow <= 0) return 0;
   const dailyBudget = dailyBudgetOverride ?? balance / LOOKAHEAD_DAYS;
   if (dailyBudget <= 0) return LOOKBACK_DAYS + LOOKAHEAD_DAYS;
-  const consumed = spentInWindow / dailyBudget;
-  return Math.min(consumed, LOOKBACK_DAYS + LOOKAHEAD_DAYS);
+  return spentInWindow / dailyBudget;
+}
+
+/**
+ * How many future days the remaining balance covers at the given daily rate.
+ *
+ * Used for the "Should cover through [date]" label. More stable than the
+ * spending-window-based coverageDays because it only changes when the balance
+ * moves (YNAB sync), not when the sliding lookback window shifts.
+ */
+export function computeBalanceCoverageDays(
+  balance: number,
+  dailyAmount: number,
+): number {
+  if (balance <= 0 || dailyAmount <= 0) return 0;
+  return balance / dailyAmount;
 }
 
 // ---------------------------------------------------------------------------

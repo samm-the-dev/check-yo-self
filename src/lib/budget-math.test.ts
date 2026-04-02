@@ -12,6 +12,7 @@ import {
   computeSpendingVelocity,
   computePaceOverspend,
   computeCoverageDays,
+  computeBalanceCoverageDays,
   buildCashflowProjection,
   advanceByYnabFrequency,
   materializeFutureEvents,
@@ -300,9 +301,14 @@ describe('computeCoverageDays', () => {
     expect(computeCoverageDays(140, 140)).toBeCloseTo(14);
   });
 
-  it('caps at full window (28) when balance is 0 or negative', () => {
+  it('returns full window (28) when balance is 0 or negative', () => {
     expect(computeCoverageDays(0, 50)).toBe(28);
     expect(computeCoverageDays(-10, 50)).toBe(28);
+  });
+
+  it('is not capped — returns actual coverage days even past 28', () => {
+    // balance=50, spentInWindow=200, dailyBudget=50/14≈3.57, consumed≈56
+    expect(computeCoverageDays(50, 200)).toBeGreaterThan(28);
   });
 
   it('returns 0 when no spending in window', () => {
@@ -321,6 +327,32 @@ describe('computeCoverageDays', () => {
     expect(computeCoverageDays(140, 140)).toBeCloseTo(14);
     // Same result as explicit override of 10
     expect(computeCoverageDays(140, 140, 10)).toBeCloseTo(14);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// balanceCoverageDays
+// ---------------------------------------------------------------------------
+
+describe('computeBalanceCoverageDays', () => {
+  it('returns days the remaining balance covers at the daily rate', () => {
+    // $70 balance at $10/day → 7 days
+    expect(computeBalanceCoverageDays(70, 10)).toBeCloseTo(7);
+  });
+
+  it('returns 0 when balance is 0 or negative', () => {
+    expect(computeBalanceCoverageDays(0, 10)).toBe(0);
+    expect(computeBalanceCoverageDays(-20, 10)).toBe(0);
+  });
+
+  it('returns 0 when daily amount is 0 or negative', () => {
+    expect(computeBalanceCoverageDays(100, 0)).toBe(0);
+    expect(computeBalanceCoverageDays(100, -5)).toBe(0);
+  });
+
+  it('is not capped — large balances produce large day counts', () => {
+    // $500 balance at $5/day → 100 days
+    expect(computeBalanceCoverageDays(500, 5)).toBeCloseTo(100);
   });
 });
 

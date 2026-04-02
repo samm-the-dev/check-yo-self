@@ -217,13 +217,12 @@ export async function syncYnabData(force = false): Promise<void> {
   if (!client || !planId) return;
 
   const today = todayISO();
-  // Fetch transactions back to the earlier of month-start or the lookback window
-  // so late-prior-month transactions aren't lost on month rollover.
-  const monthStart = today.slice(0, 8) + '01';
+  // Always fetch at least LOOKBACK_DAYS of history so the spending velocity
+  // window isn't truncated on month rollover (the old bug: using month-start
+  // as since_date dropped prior-month transactions on the 1st).
   const lookbackDate = new Date(today + 'T00:00:00');
   lookbackDate.setDate(lookbackDate.getDate() - LOOKBACK_DAYS);
-  const lookbackISO = lookbackDate.toISOString().slice(0, 10);
-  const sinceDate = lookbackISO < monthStart ? lookbackISO : monthStart;
+  const sinceDate = lookbackDate.toISOString().slice(0, 10);
 
   const tasks: Promise<void>[] = [];
 

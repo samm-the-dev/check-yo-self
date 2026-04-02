@@ -4,6 +4,7 @@ import { formatCurrency, todayISO, cn } from '@/lib/utils';
 import {
   computePaceOverspend,
   computeCoverageDays,
+  computeBalanceCoverageDays,
   LOOKBACK_DAYS,
   LOOKAHEAD_DAYS,
 } from '@/lib/budget-math';
@@ -206,9 +207,14 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
                   );
                 }
 
+                // Balance-based coverage: how many future days the remaining balance
+                // covers at the budgeted rate. Stable (only moves when balance changes
+                // via YNAB sync, not when the sliding lookback window shifts).
+                const balanceDays = computeBalanceCoverageDays(cat.balance, cat.dailyAmount);
+
                 const label =
                   coverageDays > LOOKBACK_DAYS
-                    ? `Should cover through ${formatCoverDate(Math.floor(coverageDays - LOOKBACK_DAYS))}`
+                    ? `Should cover through ${formatCoverDate(Math.floor(balanceDays))}`
                     : `Can spend ${formatCurrency((cat.windowAmount - cat.spentInWindow) / LOOKBACK_DAYS)} today and stay on pace`;
 
                 return (
