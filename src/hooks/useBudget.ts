@@ -43,7 +43,7 @@ export function useBudget(): BudgetState {
     const [snap, txns, bills] = await Promise.all([
       getDailyBudgetSnapshot(),
       getRecentTransactions(),
-      getUpcomingScheduled(14),
+      getUpcomingScheduled(30),
     ]);
     setBudget(snap);
     setRecentTransactions(txns);

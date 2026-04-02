@@ -360,6 +360,33 @@ describe('computeFlexibleBreakdown', () => {
     expect(result[0].bar.scheduledEvents[0].date).toBe('2026-03-22');
     expect(result[0].bar.scheduledEvents[0].amount).toBeCloseTo(50);
   });
+
+  it('depletion bar subtracts scheduled outflows from remaining balance', () => {
+    const cats = [
+      makeCategory({
+        id: '1',
+        name: 'Misc',
+        balance: 70,
+        tier: 'flexible',
+        activity: 30,
+      }),
+    ];
+    const scheduled: ScheduledTransactionInput[] = [
+      makeScheduled({
+        dateNext: '2026-03-22',
+        amount: -20,
+        frequency: 'never',
+        categoryName: 'Misc',
+        payeeName: 'Subscription',
+      }),
+    ];
+    const result = computeFlexibleBreakdown(cats, [], 10, '2026-03-19', scheduled);
+    const { bar } = result[0];
+    expect(bar.mode).toBe('depletion');
+    // effectiveBalance = max(0, 70 - 20) = 50, totalEnvelope = 30 + 50 = 80
+    expect(bar.periodBudget).toBe(80);
+    expect(bar.fill).toBeCloseTo(30 / 80); // higher fill than without scheduled
+  });
 });
 
 // ---------------------------------------------------------------------------

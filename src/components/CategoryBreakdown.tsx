@@ -50,19 +50,19 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
       {methodologyOpen && (
         <div className="text-muted-foreground space-y-2 text-xs leading-relaxed">
           <p>
-            Each bar shows your spending pressure. For categories with a spending goal,
-            the bar reflects how much budget your recent spending has consumed. The marker
-            shows today — left means room to spend, right means you've spent ahead of pace.
+            Each bar shows your spending pressure. For categories with a spending goal, the bar
+            reflects how much budget your recent spending has consumed. The marker shows today —
+            left means room to spend, right means you've spent ahead of pace.
           </p>
           <p>
-            Spending impact fades over time — a grocery run today uses your full weekly budget,
-            but each day that passes frees up a day's worth. This means your available amount
-            gradually recovers as time passes, even without new spending.
+            Spending impact fades over time — a grocery run today uses your full weekly budget, but
+            each day that passes frees up a day's worth. This means your available amount gradually
+            recovers as time passes, even without new spending.
           </p>
           <p>
-            <strong>Weekly goals</strong> look at your last 7 days.{' '}
-            <strong>Monthly goals</strong> look at the last 30 days. Categories without a goal show
-            how much of the envelope balance has been used, including upcoming scheduled transactions.
+            <strong>Weekly goals</strong> look at your last 7 days. <strong>Monthly goals</strong>{' '}
+            look at the last 30 days. Categories without a goal show how much of the envelope
+            balance has been used, including upcoming scheduled transactions.
           </p>
           {catsWithoutGoals.length > 0 && (
             <div className="border-warning/30 bg-warning/5 rounded-md border px-3 py-2">
@@ -78,7 +78,12 @@ export function CategoryBreakdown({ categories, planId }: CategoryBreakdownProps
 
       <div className="space-y-1">
         {categories.map((cat) => (
-          <CategoryBar key={`${cat.groupName}-${cat.name}`} cat={cat} categories={categories} planId={planId} />
+          <CategoryBar
+            key={`${cat.groupName}-${cat.name}`}
+            cat={cat}
+            categories={categories}
+            planId={planId}
+          />
         ))}
       </div>
     </section>
@@ -170,7 +175,8 @@ function CategoryBar({
             <div
               className="absolute inset-0 rounded-full"
               style={{
-                background: 'linear-gradient(to right, hsl(0 65% 50%), hsl(38 92% 50%), hsl(152 60% 50%))',
+                background:
+                  'linear-gradient(to right, hsl(0 65% 50%), hsl(38 92% 50%), hsl(152 60% 50%))',
                 opacity: 0.2,
               }}
             />
@@ -189,11 +195,12 @@ function CategoryBar({
                   style={{
                     width: `${100 / Math.max(1 - bar.fill, 0.05)}%`,
                     marginLeft: 'auto',
-                    background: 'linear-gradient(to right, hsl(0 65% 50%), hsl(38 92% 50%), hsl(152 60% 50%))',
+                    background:
+                      'linear-gradient(to right, hsl(0 65% 50%), hsl(38 92% 50%), hsl(152 60% 50%))',
                   }}
                 />
               </div>
-            )}}
+            )}
           </>
         ) : (
           <>
@@ -332,9 +339,10 @@ function BarLabel({
   if (bar.mode === 'depletion') {
     const scheduledTotal = bar.scheduledEvents.reduce((sum, ev) => sum + ev.amount, 0);
     const effective = Math.max(0, cat.balance - scheduledTotal);
-    label = scheduledTotal > 0
-      ? `${formatCurrency(effective)} available after upcoming`
-      : `${formatCurrency(cat.balance)} remaining`;
+    label =
+      scheduledTotal > 0
+        ? `${formatCurrency(effective)} available after upcoming`
+        : `${formatCurrency(cat.balance)} remaining`;
   } else if (bar.fill > 1) {
     // Over pace — spending-is-coverage: how many days until effective spend
     // decays below the budget? effectiveSpent decays by dailyRate per day.
