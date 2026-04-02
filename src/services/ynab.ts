@@ -16,7 +16,6 @@ import {
   computeFlexibleBreakdown,
   deriveTierFromGoal,
   LOOKAHEAD_DAYS,
-  LOOKBACK_DAYS,
   MAX_LOOKBACK_DAYS,
   advanceByYnabFrequency,
   type CategoryInput,

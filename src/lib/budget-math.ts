@@ -213,7 +213,6 @@ export function computeFlexibleBreakdown(
   scheduledTransactions?: ScheduledTransactionInput[],
 ): FlexibleBreakdownResult[] {
   const todayStr = today ?? todayISO();
-  const todayDate = new Date(todayStr + 'T00:00:00');
 
   // 14-day lookback window (for legacy spentInWindow / velocity)
   const windowStart = new Date(todayStr + 'T00:00:00');

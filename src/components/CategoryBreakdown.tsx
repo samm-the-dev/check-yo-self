@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, ExternalLink, Info } from 'lucide-react';
 import { formatCurrency, todayISO, cn } from '@/lib/utils';
-import { computeBalanceCoverageDays, LOOKBACK_DAYS } from '@/lib/budget-math';
+import { computeBalanceCoverageDays } from '@/lib/budget-math';
 import type { FlexibleCategoryDaily } from '@/types/budget';
 
 interface CategoryBreakdownProps {
