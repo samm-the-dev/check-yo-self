@@ -5,8 +5,6 @@ import type {
   DailyBudgetSnapshot,
   CategoryBalance,
   CategoryOverrides,
-  NecessityGateStatus,
-  NecessityGateItem,
   TransactionSummary,
 } from '@/types/budget';
 import { todayISO } from '@/lib/utils';
@@ -252,12 +250,6 @@ export async function syncYnabData(force = false): Promise<void> {
     );
   }
 
-  if (force || (await needsSync('month'))) {
-    tasks.push(
-      client.months.getPlanMonth(planId, 'current').then((r) => writeCache('month', r.data.month)),
-    );
-  }
-
   if (force || (await needsSync('scheduled'))) {
     tasks.push(
       client.scheduledTransactions
@@ -294,7 +286,6 @@ export function milliToDollars(milliunits: number): number {
 export async function getDailyBudgetSnapshot(): Promise<DailyBudgetSnapshot | null> {
   const categoryGroups = await readCache<ynab.CategoryGroupWithCategories[]>('categories');
   const transactions = await readCache<ynab.TransactionDetail[]>('transactions');
-  const monthDetail = await readCache<ynab.MonthDetail>('month');
   const scheduledRaw = await readCache<ynab.ScheduledTransactionDetail[]>('scheduled');
 
   if (!categoryGroups || !transactions) return null;
@@ -398,12 +389,9 @@ export async function getDailyBudgetSnapshot(): Promise<DailyBudgetSnapshot | nu
     spentToday: spentTodayDollars,
     remainingToday,
     categoryBreakdown: categories,
-    readyToAssign: monthDetail ? milliToDollars(monthDetail.to_be_budgeted) : null,
   };
 
   if (hasTiers) {
-    snapshot.gate = buildNecessityGate(categoryInputs);
-
     // Convert transactions to budget-math input format
     const txnInputs = transactions.map((t) => ({
       date: t.date,
@@ -439,35 +427,6 @@ export async function getDailyBudgetSnapshot(): Promise<DailyBudgetSnapshot | nu
   }
 
   return snapshot;
-}
-
-/** Check if necessity categories are fully funded via goal_under_funded */
-function buildNecessityGate(categoryInputs: CategoryInput[]): NecessityGateStatus {
-  const underfundedNecessities: NecessityGateItem[] = categoryInputs
-    .filter(
-      (cat) =>
-        cat.tier === 'necessity' &&
-        !cat.goalSnoozed &&
-        // Goal-based: underfunded per YNAB. Override-without-goal fallback: unbudgeted.
-        ((cat.goalUnderFunded != null && cat.goalUnderFunded > 0) ||
-          (cat.goalUnderFunded == null && cat.budgeted === 0)),
-    )
-    .map((cat) => ({
-      id: cat.id,
-      name: cat.name,
-      groupName: cat.groupName,
-      shortfall: cat.goalUnderFunded != null && cat.goalUnderFunded > 0 ? cat.goalUnderFunded : 0,
-    }));
-
-  const planId = getResolvedPlanId();
-  const now = new Date();
-  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-
-  return {
-    blocked: underfundedNecessities.length > 0,
-    underfundedNecessities,
-    ynabBudgetLink: planId ? `https://app.ynab.com/${planId}/budget/${month}` : null,
-  };
 }
 
 /** Get recent transactions within the lookback window (MAX_LOOKBACK_DAYS) as summaries */

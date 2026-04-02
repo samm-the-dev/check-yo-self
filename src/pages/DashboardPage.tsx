@@ -2,8 +2,6 @@ import { useBudget } from '@/hooks/useBudget';
 import type { TransactionSummary } from '@/types/budget';
 import { getResolvedPlanId } from '@/services/ynab';
 import { formatCurrency, todayISO, cn } from '@/lib/utils';
-import { LOOKAHEAD_DAYS } from '@/lib/budget-math';
-import { BudgetGate } from '@/components/BudgetGate';
 import { CategoryBreakdown } from '@/components/CategoryBreakdown';
 import { CashflowChart } from '@/components/CashflowChart';
 import {
@@ -25,19 +23,7 @@ export function DashboardPage() {
   const today = new Date(todayISO() + 'T00:00:00');
 
   const scheduledNudgeDismissed = localStorage.getItem(SCHEDULED_NUDGE_DISMISSED_KEY) === 'true';
-  // Month-specific key so it re-prompts each month
-  const nextMonthKey = `cys-next-month-nudge-${today.getFullYear()}-${String(today.getMonth() + 2).padStart(2, '0')}`;
-  const nextMonthNudgeDismissed = localStorage.getItem(nextMonthKey) === 'true';
   const planId = getResolvedPlanId();
-
-  // Next month's name for the nudge
-  const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, 1).toLocaleDateString(
-    'en-US',
-    { month: 'long' },
-  );
-  const calendarDaysLeft =
-    new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate() - today.getDate() + 1;
-  const windowCrossesMonth = budget && calendarDaysLeft <= LOOKAHEAD_DAYS;
 
   if (!connected) {
     return (
@@ -129,82 +115,16 @@ export function DashboardPage() {
         </div>
       )}
 
-      {/* Next month budget nudge */}
-      {windowCrossesMonth && !nextMonthNudgeDismissed && (
-        <div className="border-border bg-card flex items-center justify-between rounded-lg border px-4 py-3">
-          <div className="flex items-center gap-2">
-            <CalendarClock className="text-muted-foreground h-4 w-4 shrink-0" />
-            <p className="text-muted-foreground text-sm">
-              Your forecast extends into {nextMonth}.{' '}
-              {planId ? (
-                <a
-                  href={`https://app.ynab.com/${planId}/budget`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline"
-                >
-                  Set up {nextMonth}'s budget
-                </a>
-              ) : (
-                <span className="text-primary">Set up {nextMonth}'s budget</span>
-              )}{' '}
-              in YNAB for accurate projections.
-            </p>
-          </div>
-          <button
-            onClick={() => localStorage.setItem(nextMonthKey, 'true')}
-            className="text-muted-foreground hover:text-foreground ml-2 text-xs"
-            aria-label="Dismiss"
-          >
-            &times;
-          </button>
-        </div>
-      )}
-
-      {/* Ready to Assign nudge */}
-      {budget && budget.readyToAssign != null && budget.readyToAssign > 0 && (
-        <div className="border-primary/30 bg-primary/5 flex items-center justify-between rounded-lg border px-4 py-3">
-          <div className="flex items-center gap-2">
-            <CalendarClock className="text-primary h-4 w-4 shrink-0" />
-            <p className="text-muted-foreground text-sm">
-              <span className="text-primary font-semibold">
-                {formatCurrency(budget.readyToAssign)}
-              </span>{' '}
-              ready to assign.{' '}
-              {planId ? (
-                <a
-                  href={`https://app.ynab.com/${planId}/budget`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline"
-                >
-                  Distribute in YNAB
-                </a>
-              ) : (
-                <span className="text-primary">Distribute in YNAB</span>
-              )}{' '}
-              to keep pace tracking accurate.
-            </p>
-          </div>
-        </div>
-      )}
-
       {budget && (
         <>
-          {budget.gate?.blocked ? (
-            <BudgetGate gate={budget.gate} />
-          ) : (
-            <>
-              {/* Recent transactions — collapsed by default */}
-              {recentTransactions.length > 0 && (
-                <RecentTransactions transactions={recentTransactions} />
-              )}
+          {/* Recent transactions — collapsed by default */}
+          {recentTransactions.length > 0 && (
+            <RecentTransactions transactions={recentTransactions} />
+          )}
 
-              {/* Category breakdown */}
-              {budget.flexibleBreakdown && (
-                <CategoryBreakdown categories={budget.flexibleBreakdown} planId={planId} />
-              )}
-            </>
+          {/* Category breakdown */}
+          {budget.flexibleBreakdown && (
+            <CategoryBreakdown categories={budget.flexibleBreakdown} planId={planId} />
           )}
         </>
       )}

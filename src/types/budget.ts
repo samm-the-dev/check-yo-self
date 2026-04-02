@@ -1,25 +1,6 @@
 /** Per-category tier override — reclassify where YNAB goal doesn't match intent */
 export type CategoryOverrides = Record<string, 'necessity' | 'flexible' | 'skip'>;
 
-/** A necessity category that needs more funding */
-export interface NecessityGateItem {
-  id: string;
-  name: string;
-  groupName: string;
-  /** YNAB-computed shortfall: dollars still needed to meet the goal */
-  shortfall: number;
-}
-
-/** Gate status when necessity categories aren't fully funded */
-export interface NecessityGateStatus {
-  /** True if any non-snoozed necessity category is underfunded */
-  blocked: boolean;
-  /** Necessity categories with outstanding shortfall */
-  underfundedNecessities: NecessityGateItem[];
-  /** Deep link to YNAB budget for current month (null until plan UUID resolves) */
-  ynabBudgetLink: string | null;
-}
-
 /** Per-category budget breakdown for flexible categories */
 export interface FlexibleCategoryDaily {
   name: string;
@@ -76,10 +57,6 @@ export interface DailyBudgetSnapshot {
   remainingToday: number;
   /** Per-category breakdown */
   categoryBreakdown: CategoryBalance[];
-  /** YNAB Ready to Assign (dollars). Positive = unassigned funds, negative = overassigned. */
-  readyToAssign: number | null;
-  /** Gate status — present when NEED goals or overrides classify categories */
-  gate?: NecessityGateStatus;
   /** Per-category daily breakdown — present when NEED goals or overrides classify categories */
   flexibleBreakdown?: FlexibleCategoryDaily[];
 }
