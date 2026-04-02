@@ -54,7 +54,7 @@ export interface FlexibleCategoryDaily {
     periodBudget: number;
     fill: number;
     todayPosition: number | null;
-    scheduledAmount: number;
+    scheduledEvents: { date: string; amount: number }[];
   };
 }
 

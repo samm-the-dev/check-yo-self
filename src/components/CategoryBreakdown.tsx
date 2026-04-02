@@ -99,6 +99,30 @@ function CategoryBar({
   const isDepletion = bar.mode === 'depletion';
   const hasToday = todayPercent != null;
 
+  // Map scheduled events to bar positions.
+  // Each event gets a left% (where it starts on the timeline) and width%
+  // (how much budget it consumes). Capped at 100%.
+  const todayStr = todayISO();
+  const windowDays = bar.mode === 'weekly' ? 14 : bar.mode === 'monthly' ? 60 : 0;
+  const scheduledSegments =
+    !isDepletion && !overspent && bar.scheduledEvents.length > 0
+      ? bar.scheduledEvents
+          .map((ev) => {
+            const daysFromToday =
+              (new Date(ev.date + 'T00:00:00').getTime() -
+                new Date(todayStr + 'T00:00:00').getTime()) /
+              (1000 * 60 * 60 * 24);
+            const left = (0.5 + daysFromToday / windowDays) * 100;
+            const width = bar.periodBudget > 0 ? (ev.amount / bar.periodBudget) * 100 : 0;
+            return { left, width };
+          })
+          .filter((s) => s.left < 100 && s.left + s.width > 0)
+          .map((s) => ({
+            left: Math.max(0, s.left),
+            width: Math.min(s.width, 100 - Math.max(0, s.left)),
+          }))
+      : [];
+
   return (
     <div className="py-1.5">
       <div className="flex items-baseline justify-between gap-2">
@@ -167,6 +191,19 @@ function CategoryBar({
                 />
               </div>
             ) : null}
+            {/* Scheduled transaction segments — positioned on the future timeline */}
+            {scheduledSegments.map((seg, i) => (
+              <div
+                key={i}
+                className="absolute inset-y-0 rounded-full"
+                style={{
+                  left: `${seg.left}%`,
+                  width: `${seg.width}%`,
+                  background: 'hsl(38 92% 50%)',
+                  opacity: 0.35,
+                }}
+              />
+            ))}
             {/* Today marker */}
             {hasToday && (
               <div

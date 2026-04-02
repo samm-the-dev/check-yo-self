@@ -115,8 +115,9 @@ export interface FlexibleBreakdownResult {
      *  this is a fixed mid-period marker at 0.5. For depletion there is no
      *  pace concept, so the marker is null. */
     todayPosition: number | null;
-    /** Upcoming scheduled transaction total in this category within the lookahead window */
-    scheduledAmount: number;
+    /** Upcoming scheduled transactions in this category, with date and amount for
+     *  timeline placement on the bar. Sorted by date. */
+    scheduledEvents: { date: string; amount: number }[];
   };
 }
 
@@ -261,22 +262,27 @@ export function computeFlexibleBreakdown(
     }
   }
 
-  // Upcoming scheduled outflows by category name.
-  // Sum the next occurrence amount for each category (simple approximation —
-  // one-off and first recurring occurrence within the lookahead window).
-  const scheduledByCategory = new Map<string, number>();
+  // Upcoming scheduled outflow events by category name, with date for timeline placement.
+  // Materialize recurring transactions within the lookahead window.
+  const scheduledByCategory = new Map<string, { date: string; amount: number }[]>();
   if (scheduledTransactions) {
-    for (const st of scheduledTransactions) {
-      if (st.amount >= 0) continue; // only outflows
-      const cat = st.categoryName;
-      if (!cat) continue;
-      // Only count if next date is within the lookahead window
-      const horizonDate = new Date(todayStr + 'T00:00:00');
-      horizonDate.setDate(horizonDate.getDate() + LOOKAHEAD_DAYS);
-      if (st.dateNext > todayStr && st.dateNext <= formatLocalDate(horizonDate)) {
-        const cur = scheduledByCategory.get(cat) ?? 0;
-        scheduledByCategory.set(cat, cur + Math.abs(st.amount));
-      }
+    const horizonDate = new Date(todayStr + 'T00:00:00');
+    horizonDate.setDate(horizonDate.getDate() + LOOKAHEAD_DAYS);
+    const horizonStr = formatLocalDate(horizonDate);
+    const events = materializeFutureEvents(scheduledTransactions, todayStr, horizonStr);
+    for (const ev of events) {
+      if (ev.amount >= 0) continue; // only outflows
+      // Match by category name from the source scheduled transaction
+      const st = scheduledTransactions.find((s) => s.payeeName === ev.label);
+      const catName = st?.categoryName;
+      if (!catName) continue;
+      const list = scheduledByCategory.get(catName) ?? [];
+      list.push({ date: ev.date, amount: Math.abs(ev.amount) });
+      scheduledByCategory.set(catName, list);
+    }
+    // Sort each category's events by date
+    for (const list of scheduledByCategory.values()) {
+      list.sort((a, b) => a.date.localeCompare(b.date));
     }
   }
 
@@ -287,7 +293,7 @@ export function computeFlexibleBreakdown(
       cat.weeklyTarget != null ? cat.weeklyTarget / 7 : cat.balance / LOOKAHEAD_DAYS;
     const catSpentToday = spentTodayByCategory.get(cat.name) ?? 0;
     const catWindowAmount = catDailyAmount * LOOKBACK_DAYS;
-    const scheduledAmount = scheduledByCategory.get(cat.name) ?? 0;
+    const scheduledEvents = scheduledByCategory.get(cat.name) ?? [];
 
     // --- Bar data ---
     let bar: FlexibleBreakdownResult['bar'];
@@ -303,7 +309,7 @@ export function computeFlexibleBreakdown(
           periodBudget,
           fill: periodBudget > 0 ? periodSpent / periodBudget : 0,
           todayPosition: 0.5, // today at midpoint of 7+7 window
-          scheduledAmount,
+          scheduledEvents,
         };
       } else {
         // Monthly goal: 30-day sliding window vs monthly target
@@ -315,7 +321,7 @@ export function computeFlexibleBreakdown(
           periodBudget,
           fill: periodBudget > 0 ? periodSpent / periodBudget : 0,
           todayPosition: 0.5, // today at midpoint of 30+30 window
-          scheduledAmount,
+          scheduledEvents,
         };
       }
     } else {

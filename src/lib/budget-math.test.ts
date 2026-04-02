@@ -355,7 +355,9 @@ describe('computeFlexibleBreakdown', () => {
       }),
     ];
     const result = computeFlexibleBreakdown(cats, [], 10, '2026-03-19', scheduled);
-    expect(result[0].bar.scheduledAmount).toBeCloseTo(50);
+    expect(result[0].bar.scheduledEvents).toHaveLength(1);
+    expect(result[0].bar.scheduledEvents[0].date).toBe('2026-03-22');
+    expect(result[0].bar.scheduledEvents[0].amount).toBeCloseTo(50);
   });
 });
 
