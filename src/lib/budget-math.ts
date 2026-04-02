@@ -398,7 +398,8 @@ export function computeFlexibleBreakdown(
       }
     } else {
       // No goal: depletion gauge — how much of the envelope remains.
-      // fill = remaining ratio (1 = full, 0 = fully used, negative = over-committed).
+      // fill = remaining ratio (1 = full, 0 = fully used), clamped to 0.
+      // Over-committed state is inferred via effectiveSpent > periodBudget.
       // Scheduled outflows reduce the remaining balance.
       const scheduledTotal = scheduledEvents.reduce((sum, ev) => sum + ev.amount, 0);
       const totalEnvelope = cat.activity + cat.balance;
