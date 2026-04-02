@@ -47,7 +47,9 @@ export interface FlexibleCategoryDaily {
   remainingToday: number;
   /** Share of total flexible daily budget (0-1) */
   percentOfTotal: number;
-  /** Period-aware bar data for the category breakdown visualization */
+  /** Period-aware bar data for the category breakdown visualization.
+   *  Goal bars: fill = effectiveSpent / periodBudget (0 = no spending, 1 = on pace, >1 = over).
+   *  Depletion bars: fill = remaining ratio (1 = full, 0 = empty, not inverted). */
   bar: {
     mode: 'weekly' | 'monthly' | 'depletion';
     periodSpent: number;

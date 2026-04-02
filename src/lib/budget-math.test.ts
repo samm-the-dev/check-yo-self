@@ -331,7 +331,8 @@ describe('computeFlexibleBreakdown', () => {
     expect(bar.mode).toBe('depletion');
     expect(bar.periodSpent).toBe(30); // activity
     expect(bar.periodBudget).toBe(100); // activity + balance
-    expect(bar.fill).toBeCloseTo(0.3); // 30/100
+    // remaining ratio = balance / totalEnvelope = 70 / 100 = 0.7
+    expect(bar.fill).toBeCloseTo(0.7);
     expect(bar.todayPosition).toBeNull();
   });
 
@@ -383,10 +384,11 @@ describe('computeFlexibleBreakdown', () => {
     const result = computeFlexibleBreakdown(cats, [], 10, '2026-03-19', scheduled);
     const { bar } = result[0];
     expect(bar.mode).toBe('depletion');
-    // totalEnvelope = activity + balance = 30 + 70 = 100 (original, not reduced)
-    // usedPortion = activity + scheduled = 30 + 20 = 50
+    // totalEnvelope = activity + balance = 30 + 70 = 100
+    // remaining = balance - scheduled = 70 - 20 = 50
+    // fill (remaining ratio) = 50 / 100 = 0.5
     expect(bar.periodBudget).toBe(100);
-    expect(bar.fill).toBeCloseTo(50 / 100); // scheduled counts as committed spending
+    expect(bar.fill).toBeCloseTo(0.5); // 50% remaining after scheduled outflows
   });
 
   it('computes daysUntilFree for over-pace weekly goal via per-txn decay', () => {

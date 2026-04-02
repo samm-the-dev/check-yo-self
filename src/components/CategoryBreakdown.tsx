@@ -101,20 +101,22 @@ function CategoryBar({
 }) {
   const { bar } = cat;
   const isDepletion = bar.mode === 'depletion';
-  // For depletion bars, overspent when fill >= 1 (scheduled txns can push it there)
-  const overspent = isDepletion ? bar.fill >= 1 : cat.balance < 0;
+  // For depletion bars, fill is remaining ratio (1=full, 0=empty).
+  // Overspent when scheduled txns push remaining negative (effectiveSpent > periodBudget).
+  const overspent = isDepletion ? bar.effectiveSpent > bar.periodBudget : cat.balance < 0;
 
   const todayPercent = bar.todayPosition != null ? bar.todayPosition * 100 : null;
   const hasToday = todayPercent != null;
+
+  // The bar is a symmetric window: periodDays back + periodDays forward.
+  // A date d days from now maps to position 0.5 + d/(2*periodDays).
+  // e.g. weekly: 7 back + 7 forward = 14 total, d=7 → 0.5 + 7/14 = 1.0 (bar end).
+  const periodDays = bar.mode === 'weekly' ? 7 : bar.mode === 'monthly' ? 30 : 0;
 
   // Map scheduled events to bar positions.
   // The right edge of each segment aligns with the scheduled date (that's
   // when the money leaves). Width = how much budget it consumes.
   const todayStr = todayISO();
-  // The bar is a symmetric window: periodDays back + periodDays forward.
-  // A date d days from now maps to position 0.5 + d/(2*periodDays).
-  // e.g. weekly: 7 back + 7 forward = 14 total, d=7 → 0.5 + 7/14 = 1.0 (bar end).
-  const periodDays = bar.mode === 'weekly' ? 7 : bar.mode === 'monthly' ? 30 : 0;
   const scheduledSegments =
     !isDepletion && !overspent && bar.scheduledEvents.length > 0
       ? bar.scheduledEvents
@@ -140,12 +142,20 @@ function CategoryBar({
   // Each segment the fill reaches pushes it further, which may cause it
   // to reach the next segment, and so on.
   // For goal-based bars: fill 1.0 (on pace) = today marker (50%).
-  // fill 2.0 (2x overspent) = 100%. Depletion bars use 0-100% directly.
-  const baseFill = overspent
-    ? 100
-    : isDepletion
-      ? Math.min(bar.fill, 1) * 100
-      : Math.min(bar.fill, 2) * 50;
+  // Over pace: extend to the coverage date position on the timeline
+  // so the bar visually matches "spending should last through [date]".
+  // Depletion bars use 0-100% directly.
+  let baseFill: number;
+  if (overspent) {
+    baseFill = 100;
+  } else if (isDepletion) {
+    baseFill = 0; // depletion bar has its own render path
+  } else if (bar.fill > 1 && bar.daysUntilFree != null) {
+    // Over pace: position fill at the coverage date on the timeline
+    baseFill = (0.5 + bar.daysUntilFree / (2 * periodDays)) * 100;
+  } else {
+    baseFill = Math.min(bar.fill, 2) * 50;
+  }
   let fillPercent = baseFill;
   if (scheduledSegments.length > 0) {
     const sorted = [...scheduledSegments].sort((a, b) => a.left - b.left);
@@ -186,15 +196,15 @@ function CategoryBar({
                 className="absolute inset-0 rounded-full"
                 style={{ background: 'hsl(0 65% 50%)' }}
               />
-            ) : bar.fill >= 1 ? null : (
+            ) : bar.fill <= 0 ? null : (
               <div
                 className="absolute inset-y-0 right-0 overflow-hidden rounded-full transition-all"
-                style={{ width: `${(1 - bar.fill) * 100}%` }}
+                style={{ width: `${bar.fill * 100}%` }}
               >
                 <div
                   className="h-full rounded-full"
                   style={{
-                    width: `${100 / Math.max(1 - bar.fill, 0.05)}%`,
+                    width: `${100 / Math.max(bar.fill, 0.05)}%`,
                     marginLeft: 'auto',
                     background:
                       'linear-gradient(to right, hsl(0 65% 50%), hsl(38 92% 50%), hsl(152 60% 50%))',
